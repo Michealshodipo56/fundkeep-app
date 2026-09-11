@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useWallet, type SavingsGoal } from "@/lib/wallet-context";
+import { useWallet } from "@/lib/wallet-context";
 
 function shortAddress(addr: string): string {
   if (addr.length <= 10) return addr;
