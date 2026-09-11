@@ -32,6 +32,7 @@ function DepositFormContent() {
   const [depositAmount, setDepositAmount] = useState("250.00");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [depositSuccess, setDepositSuccess] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
 
   // Set default goal selection
   useEffect(() => {
@@ -69,19 +70,23 @@ function DepositFormContent() {
     router.push("/auth");
   }, [disconnect, router]);
 
-  const handleDepositSubmit = (e: React.FormEvent) => {
+  const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGoal || !amountNum || amountNum <= 0) return;
     setIsSubmitting(true);
+    setDepositError(null);
 
-    setTimeout(() => {
-      depositToGoal(selectedGoal.id, amountNum);
-      setIsSubmitting(false);
+    try {
+      await depositToGoal(selectedGoal.id, amountNum);
       setDepositSuccess(true);
       setTimeout(() => {
         setDepositSuccess(false);
       }, 3000);
-    }, 1000);
+    } catch (err) {
+      setDepositError(err instanceof Error ? err.message : "Failed to deposit.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const displayAddress = walletAddress ? shortAddress(walletAddress) : "Not Connected";
@@ -448,6 +453,16 @@ function DepositFormContent() {
                         className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center text-xs text-emerald-400 font-semibold"
                       >
                         ✓ Deposit of {depositAmount} USDC successful! Smart contract state updated.
+                      </motion.div>
+                    )}
+
+                    {depositError && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-xl bg-red/10 border border-red/30 text-center text-xs text-red font-semibold"
+                      >
+                        {depositError}
                       </motion.div>
                     )}
                   </div>
