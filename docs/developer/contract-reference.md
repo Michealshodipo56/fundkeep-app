@@ -39,6 +39,7 @@ soroban contract invoke \
   --source $SECRET_KEY \
   --network testnet \
   -- withdraw \
+  --caller $OWNER_ADDRESS \
   --goal_id 0
 
 # Read a goal (no signing required)
