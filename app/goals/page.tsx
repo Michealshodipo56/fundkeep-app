@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useWallet, type SavingsGoal } from "@/lib/wallet-context";
+import { useWallet } from "@/lib/wallet-context";
 
 function shortAddress(addr: string): string {
   if (addr.length <= 10) return addr;
@@ -34,6 +34,23 @@ export default function GoalsPage() {
   const [copiedWallet, setCopiedWallet] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "locked" | "unlocked">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+
+  const handleWithdraw = useCallback(
+    async (goalId: string) => {
+      setWithdrawingId(goalId);
+      setWithdrawError(null);
+      try {
+        await withdrawGoal(goalId);
+      } catch (err) {
+        setWithdrawError(err instanceof Error ? err.message : "Failed to withdraw.");
+      } finally {
+        setWithdrawingId(null);
+      }
+    },
+    [withdrawGoal]
+  );
 
   const handleCopyWallet = useCallback(() => {
     if (walletAddress) {
@@ -299,6 +316,12 @@ export default function GoalsPage() {
           </div>
         </div>
 
+        {withdrawError && (
+          <div className="p-3 rounded-xl bg-red/10 border border-red/30 text-center text-xs text-red font-semibold">
+            {withdrawError}
+          </div>
+        )}
+
         {/* GOALS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredGoals.map((goal) => {
@@ -362,10 +385,11 @@ export default function GoalsPage() {
                 <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-2">
                   {goal.status === "UNLOCKED" ? (
                     <button
-                      onClick={() => withdrawGoal(goal.id)}
-                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold text-center transition-colors"
+                      onClick={() => handleWithdraw(goal.id)}
+                      disabled={withdrawingId === goal.id}
+                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold text-center transition-colors disabled:opacity-60"
                     >
-                      Withdraw Funds
+                      {withdrawingId === goal.id ? "Withdrawing..." : "Withdraw Funds"}
                     </button>
                   ) : goal.status === "WITHDRAWN" ? (
                     <span className="flex-1 py-2 px-3 text-xs text-white/40 font-semibold text-center">

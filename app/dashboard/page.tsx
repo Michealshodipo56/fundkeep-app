@@ -173,6 +173,7 @@ export default function DashboardPage() {
   const [newGoalDeadline, setNewGoalDeadline] = useState("");
   const [newGoalCategory, setNewGoalCategory] = useState<SavingsGoal["category"]>("laptop");
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Redirect to auth if wallet not connected
   useEffect(() => {
@@ -205,14 +206,14 @@ export default function DashboardPage() {
   }, [disconnect, router]);
 
   const handleCreateGoal = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newGoalTitle || !newGoalTarget) return;
       setCreating(true);
+      setCreateError(null);
 
-      // Simulate a brief "on-chain" delay
-      setTimeout(() => {
-        createGoal({
+      try {
+        await createGoal({
           title: newGoalTitle,
           category: newGoalCategory,
           target: parseFloat(newGoalTarget),
@@ -223,9 +224,12 @@ export default function DashboardPage() {
         setNewGoalTarget("");
         setNewGoalDeadline("");
         setNewGoalCategory("laptop");
-        setCreating(false);
         setCreateModalOpen(false);
-      }, 600);
+      } catch (err) {
+        setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
+      } finally {
+        setCreating(false);
+      }
     },
     [newGoalTitle, newGoalTarget, newGoalDeadline, newGoalCategory, createGoal]
   );
@@ -874,6 +878,10 @@ export default function DashboardPage() {
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-white focus:outline-none focus:border-red focus:ring-1 focus:ring-red transition-all"
                   />
                 </div>
+
+                {createError && (
+                  <p className="text-xs text-red font-semibold text-center">{createError}</p>
+                )}
 
                 <div className="flex gap-2 mt-2">
                   <button

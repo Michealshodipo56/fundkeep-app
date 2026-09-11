@@ -17,14 +17,27 @@ There is no penalty, no yield, no custodian. The lock is enforced by the contrac
 
 ---
 
+## Architecture
+
+FundKeep is split across four repos:
+
+| Repo | Role |
+|---|---|
+| [`fundkeep-contract`](https://github.com/Michealshodipo56/fundkeep-contract) | The Soroban smart contract (Rust) — source of truth for goal state |
+| [`fundkeep-sdk`](https://github.com/Michealshodipo56/fundkeep-sdk) | `@fundkeep/sdk` — TypeScript client that builds/signs/submits contract calls |
+| [`fundkeep-indexer`](https://github.com/Michealshodipo56/fundkeep-indexer) | Indexes contract events into SQLite, serves the dashboard/activity feed |
+| `fundkeep-app` (this repo) | The Next.js frontend |
+
+The frontend writes to the chain directly via RPC (through `@fundkeep/sdk`, signed by Freighter) and reads goal/activity history from the indexer's REST API.
+
 ## Stack
 
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 16, TypeScript, Tailwind CSS v4 |
 | Wallet | Freighter (`@stellar/freighter-api`) |
+| Chain client | `@fundkeep/sdk` (`@stellar/stellar-sdk` under the hood) |
 | Animation | Framer Motion |
-| Contract | Soroban (Rust, `soroban-sdk`) |
 | Network | Stellar Testnet |
 
 ---
@@ -33,92 +46,59 @@ There is no penalty, no yield, no custodian. The lock is enforced by the contrac
 
 ### Prerequisites
 
-- Node.js v18+
-- Rust 1.74+ with `wasm32-unknown-unknown` target (for contract development)
+- Node.js v20+
 - [Freighter](https://freighter.app) browser extension set to **Testnet**
 
 ### Install and Run
 
 ```bash
-git clone https://github.com/your-org/fundkeep.git
-cd fundkeep
+git clone https://github.com/Michealshodipo56/fundkeep-app.git
+cd fundkeep-app
 npm install
 cp .env.example .env.local  # fill in contract IDs — see Environment Variables below
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The app loads with seed data so you can explore the UI without a wallet connection.
+Open [http://localhost:3000](http://localhost:3000). The app loads with seed data in demo mode so you can explore the UI without a wallet connection — no env vars required for that. Real on-chain use requires `NEXT_PUBLIC_CONTRACT_ID` and `NEXT_PUBLIC_USDC_CONTRACT_ID` to be set, which means deploying the contract first — see [`fundkeep-contract`](https://github.com/Michealshodipo56/fundkeep-contract).
 
 ---
 
 ## Environment Variables
 
-Create `.env.local` in the project root:
-
-```env
-NEXT_PUBLIC_CONTRACT_ID=           # deployed FundKeep Soroban contract address
-NEXT_PUBLIC_USDC_CONTRACT_ID=      # testnet USDC SAC: CDLZFC3SYJYDVR72W5SCVNVV45XMCHZDBNDVLYZ2G7SFKNEPFBYSYTRU
-NEXT_PUBLIC_STELLAR_NETWORK=testnet
-NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
-```
+See [`.env.example`](.env.example) for the full list with descriptions. At minimum, real (non-demo) usage needs `NEXT_PUBLIC_CONTRACT_ID` and `NEXT_PUBLIC_USDC_CONTRACT_ID`. `NEXT_PUBLIC_INDEXER_URL` is optional — without it, the activity feed and cross-device goal sync fall back to local-only storage.
 
 ---
 
 ## Contract
 
-The Soroban contract exposes five functions:
+The Soroban contract exposes five functions — see [`fundkeep-contract`](https://github.com/Michealshodipo56/fundkeep-contract) for the full spec, source, and tests:
 
 | Function | Auth | Description |
 |---|---|---|
 | `create_goal(owner, token, target_amount, deadline)` | owner | Creates a new savings goal, returns `goal_id` |
-| `deposit(goal_id, amount)` | owner | Deposits USDC; auto-unlocks if target is reached |
+| `deposit(caller, goal_id, amount)` | caller (must be owner) | Deposits USDC; auto-unlocks if target is reached |
 | `check_deadline(goal_id)` | none (public) | Unlocks goal if deadline has passed |
-| `withdraw(goal_id)` | owner | Transfers full balance back to owner |
+| `withdraw(caller, goal_id)` | caller (must be owner) | Transfers full balance back to owner |
 | `get_goal(goal_id)` | none (public) | Returns the full goal struct |
 
-Soroban contracts have no internal timer. `check_deadline` must be called by an external transaction after the deadline passes — the FundKeep frontend does this automatically on page load for overdue goals.
-
----
-
-## Building and Deploying the Contract
-
-```bash
-# Build
-cargo build --target wasm32-unknown-unknown --release
-
-# Deploy to testnet
-soroban contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/fundkeep.wasm \
-  --source <YOUR_SECRET_KEY> \
-  --network testnet
-```
-
-Copy the output contract address into `NEXT_PUBLIC_CONTRACT_ID` in `.env.local`.
+Soroban contracts have no internal timer. `check_deadline` must be called by an external transaction after the deadline passes — the FundKeep frontend does this automatically for the connected owner's overdue goals.
 
 ---
 
 ## Testing
 
-**Contract unit tests (Rust):**
-
-```bash
-cargo test
-```
-
-Covers: goal creation, deposits under/over target, auto-unlock on target, deadline unlock, early withdrawal rejection, double withdrawal rejection, unauthorized access.
-
-**Frontend:**
-
 ```bash
 npm run lint
 ```
+
+Contract tests live in `fundkeep-contract` (`cargo test`); SDK and indexer tests live in their own repos (`npm test`).
 
 ---
 
 ## Project Structure
 
 ```
-fundkeep/
+fundkeep-app/
 ├── app/                  # Next.js app router pages
 │   ├── dashboard/        # Goal dashboard
 │   ├── goals/            # Goal detail view
@@ -128,6 +108,8 @@ fundkeep/
 ├── components/           # Shared UI components
 ├── lib/
 │   ├── wallet-context.tsx # WalletProvider — goal state, deposits, withdrawals
+│   ├── contract.ts        # FundKeepClient singleton (@fundkeep/sdk)
+│   ├── indexer.ts         # Fetch helpers for the indexer's REST API
 │   └── freighter.ts       # Freighter connection helpers
 ├── docs/                 # Full GitBook documentation source
 └── public/               # Static assets
@@ -137,7 +119,7 @@ fundkeep/
 
 ## Contributing
 
-Check [open issues](https://github.com/your-org/fundkeep/issues) for work labelled `good first issue`. A keeper script that auto-calls `check_deadline` on overdue goals is the most-wanted first contribution.
+Check [open issues](https://github.com/Michealshodipo56/fundkeep-app/issues) for work labelled `good first issue`. A keeper script that auto-calls `check_deadline` on overdue goals is the most-wanted first contribution.
 
 Branch naming: `feat/`, `fix/`, `docs/`, `test/`  
 Commit format: `type(scope): description` (Conventional Commits)
