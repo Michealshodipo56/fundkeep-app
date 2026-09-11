@@ -30,6 +30,7 @@ export default function CreateGoalPage() {
   const [deadlineTime, setDeadlineTime] = useState("12:00");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdSuccess, setCreatedSuccess] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCopyWallet = useCallback(() => {
     if (walletAddress) {
@@ -44,25 +45,30 @@ export default function CreateGoalPage() {
     router.push("/auth");
   }, [disconnect, router]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goalName || !targetAmount) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      createGoal({
+    setCreateError(null);
+
+    try {
+      await createGoal({
         title: goalName,
         category,
         target: parseFloat(targetAmount),
         deadline: deadlineDate || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       });
 
-      setIsSubmitting(false);
       setCreatedSuccess(true);
       setTimeout(() => {
         router.push("/goals");
       }, 1000);
-    }, 1000);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const displayAddress = walletAddress ? shortAddress(walletAddress) : "Not Connected";
@@ -478,6 +484,16 @@ export default function CreateGoalPage() {
                   className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center text-xs text-emerald-400 font-semibold"
                 >
                   ✓ Savings Goal created successfully! Redirecting...
+                </motion.div>
+              )}
+
+              {createError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 rounded-xl bg-red/10 border border-red/30 text-center text-xs text-red font-semibold"
+                >
+                  {createError}
                 </motion.div>
               )}
             </form>
