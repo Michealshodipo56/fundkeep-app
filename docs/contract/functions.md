@@ -64,11 +64,12 @@ Reads the current ledger timestamp and compares it to `goal.deadline`. If `env.l
 
 | Param | Type | Description |
 |---|---|---|
+| `caller` | `Address` | Must be the goal's owner |
 | `goal_id` | `u32` | The ID of the goal to withdraw from |
 
 **Returns:** `()`
 
-**Auth:** `owner.require_auth()`
+**Auth:** `caller.require_auth()` (caller must be the goal owner)
 
 Transfers the full `current_amount` from the contract back to the goal owner. Sets `withdrawn = true`. The goal's `current_amount` field is zeroed after transfer.
 
