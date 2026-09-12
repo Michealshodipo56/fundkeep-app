@@ -18,7 +18,12 @@ Each entry records:
 
 ## Storage
 
-Activity entries are stored in **browser local storage** under the key `fk_activity`. They are not stored on-chain. If you clear your browser storage or use a different browser, the activity history will not be present. On-chain transaction history is always recoverable via a Stellar blockchain explorer using your wallet address.
+How activity history is sourced depends on how you're connected:
+
+- **Demo mode** (no Freighter installed): entries are stored in **browser local storage** only, under the key `fk_activity`. Clearing your browser storage or switching browsers loses the history — there's nothing on-chain behind demo mode to recover it from.
+- **Real wallet connection**: FundKeep reads your activity history from [`fundkeep-indexer`](https://github.com/Michealshodipo56/fundkeep-indexer), which derives it from the contract's on-chain events (`goal_created`, `deposit`, `unlock`, `withdraw`). This means it's consistent across browsers and devices — it's not stored locally, it's re-derived from the chain. If the indexer is unreachable, the app falls back to whatever's in local storage from your own recent actions in that browser.
+
+On-chain transaction history is always independently recoverable via a Stellar blockchain explorer using your wallet address, regardless of which mode you're in.
 
 ## Interpreting the Feed
 
