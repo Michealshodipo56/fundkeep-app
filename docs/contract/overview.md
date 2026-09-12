@@ -5,7 +5,7 @@ FundKeep's on-chain logic is a single Soroban contract written in Rust using the
 ## Architecture
 
 ```
-[Freighter Wallet] <--sign--> [FundKeep Frontend (Next.js + stellar-sdk)]
+[Freighter Wallet] <--sign--> [FundKeep Frontend (Next.js + @fundkeep/sdk)]
                                           |
                                           v
                           [FundKeep Soroban Contract (Rust)]
@@ -15,6 +15,8 @@ FundKeep's on-chain logic is a single Soroban contract written in Rust using the
 ```
 
 The contract interacts with the USDC token contract to perform transfers. It never holds private keys — it holds USDC on behalf of users, identified by their Stellar address.
+
+This is the contract's own view. The contract is one of four repos — see [System Architecture](../introduction/architecture.md) for how the SDK, indexer, and frontend fit around it.
 
 ## Network
 
