@@ -1,58 +1,64 @@
 # Local Setup
 
-These instructions cover getting the FundKeep frontend and Soroban contract running locally.
+FundKeep is split across four repos (see [System Architecture](../introduction/architecture.md)). This page covers running the frontend against a deployed contract. To also run the contract or indexer locally, see their own repos' READMEs.
 
 ## Prerequisites
 
-- **Node.js** v18 or higher
-- **Rust** 1.74.0 or higher
-- **Soroban CLI** — install with: `cargo install --locked soroban-cli`
-- **Freighter** browser extension (for signing testnet transactions)
+- **Node.js** v20 or higher
+- **[Freighter](https://freighter.app)** browser extension, set to Testnet (for signing real transactions — not required for demo mode)
 
-## 1. Clone the Repository
+## 1. Clone and Install
 
 ```bash
-git clone https://github.com/your-org/fundkeep.git
-cd fundkeep
-```
-
-## 2. Install Frontend Dependencies
-
-```bash
+git clone https://github.com/Michealshodipo56/fundkeep-app.git
+cd fundkeep-app
 npm install
 ```
 
-## 3. Set Up Environment Variables
+`npm install` also pulls `@fundkeep/sdk` directly from its GitHub repo (see `package.json`) — no separate setup step needed.
 
-Copy the example env file and fill in values (see [Environment Variables](environment-variables.md)):
+## 2. Set Up Environment Variables
 
 ```bash
 cp .env.example .env.local
 ```
 
-## 4. Run the Development Server
+See [Environment Variables](environment-variables.md) for what each one does. **None of them are required to explore the app** — without `NEXT_PUBLIC_CONTRACT_ID` set, connecting a wallet (or skipping Freighter entirely) falls back to demo mode: seed data, fully local, no chain calls.
+
+To use the app for real, you need a deployed contract first — see [`fundkeep-contract`](https://github.com/Michealshodipo56/fundkeep-contract)'s `scripts/deploy.sh`, which prints the exact values to put in `NEXT_PUBLIC_CONTRACT_ID` and `NEXT_PUBLIC_USDC_CONTRACT_ID`.
+
+## 3. Run the Development Server
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The app will load with seed data so you can explore the UI before connecting a real wallet.
+Open [http://localhost:3000](http://localhost:3000).
 
-## 5. Build and Deploy the Contract (Optional)
+## 4. (Optional) Run the Indexer Locally
 
-To compile the Soroban contract:
-
-```bash
-cargo build --target wasm32-unknown-unknown --release
-```
-
-To deploy to testnet using Soroban CLI:
+The activity feed and cross-device goal sync use [`fundkeep-indexer`](https://github.com/Michealshodipo56/fundkeep-indexer). Without it, the app still works — it just falls back to `localStorage` for activity history.
 
 ```bash
-soroban contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/fundkeep.wasm \
-  --source <YOUR_SECRET_KEY> \
-  --network testnet
+git clone https://github.com/Michealshodipo56/fundkeep-indexer.git
+cd fundkeep-indexer
+npm install
+cp .env.example .env   # set CONTRACT_ID to the same value as NEXT_PUBLIC_CONTRACT_ID
+npm run dev
 ```
 
-The returned contract ID should be set as `NEXT_PUBLIC_CONTRACT_ID` in your `.env.local`.
+Then set `NEXT_PUBLIC_INDEXER_URL=http://localhost:4000` in `fundkeep-app/.env.local`.
+
+## Building and Deploying the Contract
+
+The contract lives in [`fundkeep-contract`](https://github.com/Michealshodipo56/fundkeep-contract), not this repo:
+
+```bash
+git clone https://github.com/Michealshodipo56/fundkeep-contract.git
+cd fundkeep-contract
+cargo test
+stellar keys generate deployer --network testnet --fund
+./scripts/deploy.sh deployer
+```
+
+The script builds, deploys, and prints the resulting contract ID along with the exact env vars to copy into `fundkeep-app` and `fundkeep-indexer`.
