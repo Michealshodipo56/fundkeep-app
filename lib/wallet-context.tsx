@@ -197,13 +197,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     walletAddressRef.current = walletAddress;
   }, [walletAddress]);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage on mount. This intentionally renders seed data
+  // first (matching the server-rendered output) and swaps in the real
+  // localStorage values only after mount, to avoid a hydration mismatch —
+  // the setState-in-effect lint rule doesn't have an exception for this.
   useEffect(() => {
     const storedWallet = loadFromStorage<string | null>(STORAGE_KEY_WALLET, null);
     const storedNetwork = loadFromStorage<"TESTNET" | "PUBLIC">(STORAGE_KEY_NETWORK, "TESTNET");
     const storedGoals = loadFromStorage<SavingsGoal[]>(STORAGE_KEY_GOALS, SEED_GOALS);
     const storedActivity = loadFromStorage<ActivityEntry[]>(STORAGE_KEY_ACTIVITY, SEED_ACTIVITY);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWalletAddress(storedWallet);
     setNetworkState(storedNetwork);
     setGoals(storedGoals);

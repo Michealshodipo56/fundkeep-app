@@ -35,7 +35,7 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
-        <a href="/" className="flex items-center gap-2 shrink-0" aria-label="FundKeep home">
+        <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="FundKeep home">
           <div className="w-8 h-8 rounded-lg bg-[#111] border border-[var(--border-red)] flex items-center justify-center glow-red-sm">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path
@@ -47,7 +47,7 @@ export default function Navbar() {
           <span className="text-lg font-bold tracking-tight">
             Fund<span className="text-red">Keep</span>
           </span>
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">

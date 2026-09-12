@@ -34,10 +34,12 @@ function DepositFormContent() {
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
 
-  // Set default goal selection
+  // Set default goal selection once the goal list (hydrated async from
+  // context) and the URL's goalId are both available.
   useEffect(() => {
     if (goals.length > 0) {
       if (initialGoalId && goals.some((g) => g.id === initialGoalId)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedGoalId(initialGoalId);
       } else if (!selectedGoalId) {
         setSelectedGoalId(goals[0].id);
@@ -46,7 +48,6 @@ function DepositFormContent() {
   }, [goals, initialGoalId, selectedGoalId]);
 
   const selectedGoal = goals.find((g) => g.id === selectedGoalId) || goals[0];
-  const availableBalance = 2345.67;
 
   const currentPercent = selectedGoal
     ? Math.min(100, Math.round((selectedGoal.saved / selectedGoal.target) * 100))
