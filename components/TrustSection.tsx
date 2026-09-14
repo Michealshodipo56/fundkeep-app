@@ -139,7 +139,12 @@ export default function TrustSection() {
               </svg>
               <span>
                 Source code available on{" "}
-                <a href="#" className="text-white/60 hover:text-white underline underline-offset-2 transition-colors">
+                <a
+                  href="https://github.com/Michealshodipo56/fundkeep-app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-white/60 hover:text-white underline underline-offset-2 transition-colors"
+                >
                   GitHub
                 </a>
               </span>

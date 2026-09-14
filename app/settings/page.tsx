@@ -23,13 +23,12 @@ export default function SettingsPage() {
 
   // Form states
   const [currency, setCurrency] = useState("USDC");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [animations, setAnimations] = useState(true);
 
   // Edit Profile modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [fullName, setFullName] = useState("John Doe");
-  const [email, setEmail] = useState("johndoe@example.com");
+  const [fullName, setFullName] = useState("FundKeep Account");
+  const [email, setEmail] = useState("account@fundkeep.org");
 
   const handleCopyWallet = useCallback(() => {
     if (walletAddress) {

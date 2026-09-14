@@ -21,7 +21,7 @@ export default function CreateGoalPage() {
   const [copiedWallet, setCopiedWallet] = useState(false);
 
   // Form State
-  const [goalName, setGoalName] = useState("Buy a New Laptop");
+  const [goalName, setGoalName] = useState("");
   const [goalDescription, setGoalDescription] = useState("");
   const [category, setCategory] = useState<SavingsGoal["category"]>("laptop");
   const [targetAmount, setTargetAmount] = useState("1500.00");
@@ -78,14 +78,14 @@ export default function CreateGoalPage() {
       {/* MOBILE HEADER */}
       <div className="md:hidden flex items-center justify-between px-4 h-16 bg-[#111] border-b border-white/10 sticky top-0 z-40">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#181818] border border-red/40 flex items-center justify-center glow-red-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                fill="#e0342a"
-              />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.svg"
+            alt="FundKeep logo"
+            width={32}
+            height={32}
+            className="w-8 h-8 object-contain"
+          />
           <span className="text-lg font-bold">
             Fund<span className="text-red">Keep</span>
           </span>
@@ -113,14 +113,14 @@ export default function CreateGoalPage() {
       >
         <div className="flex flex-col gap-8">
           <Link href="/" className="flex items-center gap-2.5 px-2">
-            <div className="w-9 h-9 rounded-xl bg-[#181818] border border-red/40 flex items-center justify-center glow-red-sm">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                  fill="#e0342a"
-                />
-              </svg>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icon.svg"
+              alt="FundKeep logo"
+              width={32}
+              height={32}
+              className="w-8 h-8 object-contain"
+            />
             <span className="text-xl font-bold tracking-tight">
               Fund<span className="text-red">Keep</span>
             </span>
