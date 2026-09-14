@@ -86,6 +86,11 @@ export default function CoinCenterpiece() {
           <filter id="blurSm">
             <feGaussianBlur stdDeviation="6" />
           </filter>
+
+          {/* Clip path for Stellar logo bars */}
+          <clipPath id="stellarClip">
+            <circle cx="280" cy="160" r="30" />
+          </clipPath>
         </defs>
 
         {/* 1. Red glow — breathing */}
@@ -152,12 +157,22 @@ export default function CoinCenterpiece() {
           {/* Red center glow */}
           <circle cx="280" cy="160" r="40" fill="url(#redGlow)" filter="url(#blurSm)" opacity="0.55" />
 
-          {/* 6. Stellar swirl emblem */}
-          <g stroke="rgba(255,255,255,0.75)" strokeWidth="2" strokeLinecap="round" fill="none">
-            <circle cx="280" cy="160" r="22" strokeOpacity="0.25" />
-            <line x1="262" y1="178" x2="298" y2="142" strokeOpacity="0.9" />
-            <path d="M 262,178 Q 255,155 268,142" strokeOpacity="0.7" />
-            <path d="M 298,142 Q 305,165 292,178" strokeOpacity="0.7" />
+          {/* 6. Stellar logo — circle ring + two diagonal bars */}
+          <g>
+            {/* Outer ring */}
+            <circle
+              cx="280" cy="160" r="30"
+              fill="none"
+              stroke="rgba(255,255,255,0.88)"
+              strokeWidth="4.5"
+            />
+            {/* Two diagonal bars, clipped strictly inside the circle */}
+            <g clipPath="url(#stellarClip)" transform="rotate(-22, 280, 160)">
+              {/* Upper bar */}
+              <rect x="243" y="143" width="74" height="9" rx="1" fill="rgba(255,255,255,0.88)" />
+              {/* Lower bar */}
+              <rect x="243" y="168" width="74" height="9" rx="1" fill="rgba(255,255,255,0.88)" />
+            </g>
           </g>
         </motion.g>
       </svg>

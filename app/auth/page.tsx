@@ -77,14 +77,14 @@ export default function AuthPage() {
       {/* Top Header */}
       <header className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between relative z-10">
         <Link href="/" className="flex items-center gap-2" aria-label="FundKeep home">
-          <div className="w-9 h-9 rounded-xl bg-[#111] border border-[var(--border-red)] flex items-center justify-center glow-red-sm">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                fill="#e0342a"
-              />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.svg"
+            alt="FundKeep logo"
+            width={32}
+            height={32}
+            className="w-8 h-8 object-contain"
+          />
           <span className="text-xl font-bold tracking-tight">
             Fund<span className="text-red">Keep</span>
           </span>
