@@ -3,7 +3,9 @@ import {
   isAllowed,
   setAllowed,
   getAddress,
+  getNetwork,
 } from "@stellar/freighter-api";
+import { getNetworkPassphrase } from "./contract";
 
 /**
  * Checks if the Freighter browser extension is installed.
@@ -53,6 +55,21 @@ export async function connectFreighter(): Promise<{
       if (denied) {
         return { success: false, error: denied };
       }
+    }
+
+    const network = await getNetwork();
+    if (network.error) {
+      return {
+        success: false,
+        error: `Could not determine Freighter's network: ${network.error}`,
+      };
+    }
+    if (network.networkPassphrase !== getNetworkPassphrase()) {
+      return {
+        success: false,
+        error:
+          "Freighter is on a different Stellar network. Switch it to this FundKeep deployment's network, then try again.",
+      };
     }
 
     const addressResult = await getAddress();

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useWallet, type ActivityEntry } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
 import { formatUsdc, timeAgo } from "@/lib/utils";
+import { stellarExpertTxUrl } from "@/lib/tx";
 
 type TabType = "all" | "deposits" | "withdrawals" | "updates";
 
@@ -94,6 +95,16 @@ export default function ActivityPage() {
                           {item.type === "withdraw" ? "-" : "+"}
                           {formatUsdc(item.amount)} USDC
                         </p>
+                      )}
+                      {item.txHash && (
+                        <a
+                          href={stellarExpertTxUrl(item.txHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-[10px] font-mono text-white/50 hover:text-white underline underline-offset-2"
+                        >
+                          {item.txHash.slice(0, 6)}…{item.txHash.slice(-4)}
+                        </a>
                       )}
                       <p className="text-[10px] text-white/40">{timeAgo(item.timestamp)}</p>
                     </div>

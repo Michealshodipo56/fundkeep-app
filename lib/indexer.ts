@@ -40,20 +40,28 @@ export async function fetchIndexedGoals(owner: string): Promise<IndexerGoal[]> {
   }
 }
 
+export async function fetchIndexedActivityResult(
+  owner: string,
+  limit = 100
+): Promise<{ reachable: boolean; activity: IndexerActivity[] }> {
+  const base = baseUrl();
+  if (!base) return { reachable: false, activity: [] };
+
+  try {
+    const res = await fetch(`${base}/api/activity/${owner}?limit=${limit}`);
+    if (!res.ok) return { reachable: false, activity: [] };
+    const data = (await res.json()) as { activity?: IndexerActivity[] };
+    return { reachable: true, activity: data.activity ?? [] };
+  } catch {
+    return { reachable: false, activity: [] };
+  }
+}
+
 /** Never throws — returns an empty list if the indexer isn't configured or unreachable. */
 export async function fetchIndexedActivity(
   owner: string,
   limit = 100
 ): Promise<IndexerActivity[]> {
-  const base = baseUrl();
-  if (!base) return [];
-
-  try {
-    const res = await fetch(`${base}/api/activity/${owner}?limit=${limit}`);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { activity?: IndexerActivity[] };
-    return data.activity ?? [];
-  } catch {
-    return [];
-  }
+  const result = await fetchIndexedActivityResult(owner, limit);
+  return result.activity;
 }

@@ -4,10 +4,19 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@/lib/wallet-context";
+import { useWallet, type TxReceipt } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
 import { CadencePicker, SavePlanHint } from "@/components/CadencePicker";
+import { TxReceiptCard } from "@/components/TxReceiptCard";
 import { CADENCE_LABELS, formatDeadline, formatUsdc, type SaveCadence } from "@/lib/utils";
+import {
+  DESCRIPTION_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
+  USDC_MAX,
+  USDC_MIN,
+  farFutureDeadline,
+  todayIsoDate,
+} from "@/lib/validation";
 
 type UnlockType = "deadline" | "target";
 
@@ -22,12 +31,11 @@ export default function CreateGoalPage() {
   const [unlockCondition, setUnlockCondition] = useState<UnlockType>("deadline");
   const [deadlineDate, setDeadlineDate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [createdSuccess, setCreatedSuccess] = useState(false);
+  const [createdReceipt, setCreatedReceipt] = useState<TxReceipt | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const targetNum = parseFloat(targetAmount || "0");
-  const TARGET_ONLY_DEADLINE = "2036-12-31";
-  const effectiveDeadline = unlockCondition === "deadline" ? deadlineDate : TARGET_ONLY_DEADLINE;
+  const effectiveDeadline = unlockCondition === "deadline" ? deadlineDate : farFutureDeadline();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,17 +47,18 @@ export default function CreateGoalPage() {
 
     setIsSubmitting(true);
     setCreateError(null);
+    setCreatedReceipt(null);
 
     try {
-      await createGoal({
+      const { receipt } = await createGoal({
         title: goalName,
         description: goalDescription,
         cadence,
         target: parseFloat(targetAmount),
         deadline: effectiveDeadline,
       });
-      setCreatedSuccess(true);
-      setTimeout(() => router.push("/goals"), 1000);
+      setCreatedReceipt(receipt);
+      setTimeout(() => router.push("/goals"), receipt.hash ? 2800 : 1200);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
     } finally {
@@ -95,11 +104,16 @@ export default function CreateGoalPage() {
                   <input
                     type="text"
                     required
+                    maxLength={TITLE_MAX_LENGTH}
                     value={goalName}
                     onChange={(e) => setGoalName(e.target.value)}
                     placeholder="e.g. Emergency Fund"
                     className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-sm text-white placeholder-white/20 focus:outline-none focus:border-red"
+                    disabled={isSubmitting || Boolean(createdReceipt)}
                   />
+                  <p className="text-[10px] text-white/35 mt-1 text-right">
+                    {goalName.trim().length}/{TITLE_MAX_LENGTH}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-white/70 mb-2">Save plan</label>
@@ -114,12 +128,16 @@ export default function CreateGoalPage() {
                   </label>
                   <textarea
                     rows={3}
-                    maxLength={120}
+                    maxLength={DESCRIPTION_MAX_LENGTH}
                     value={goalDescription}
                     onChange={(e) => setGoalDescription(e.target.value)}
                     placeholder="Add a short description..."
                     className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-sm text-white placeholder-white/20 focus:outline-none focus:border-red resize-none"
+                    disabled={isSubmitting || Boolean(createdReceipt)}
                   />
+                  <p className="text-[10px] text-white/35 mt-1 text-right">
+                    {goalDescription.length}/{DESCRIPTION_MAX_LENGTH}
+                  </p>
                 </div>
               </div>
 
@@ -128,7 +146,8 @@ export default function CreateGoalPage() {
                 <input
                   type="number"
                   step="0.01"
-                  min="1"
+                  min={USDC_MIN}
+                  max={USDC_MAX}
                   required
                   value={targetAmount}
                   onChange={(e) => setTargetAmount(e.target.value)}
@@ -172,8 +191,10 @@ export default function CreateGoalPage() {
                       type="date"
                       required
                       value={deadlineDate}
-                      min={new Date().toISOString().slice(0, 10)}
+                      min={todayIsoDate()}
+                      max={farFutureDeadline()}
                       onChange={(e) => setDeadlineDate(e.target.value)}
+                      disabled={isSubmitting || Boolean(createdReceipt)}
                       className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-sm text-white focus:outline-none focus:border-red"
                     />
                     <SavePlanHint target={targetNum} deadline={deadlineDate} cadence={cadence} />
@@ -186,19 +207,16 @@ export default function CreateGoalPage() {
 
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || Boolean(createdReceipt)}
                 className="w-full py-4 rounded-xl bg-red text-white text-sm font-bold glow-red disabled:opacity-60 min-h-[54px]"
               >
-                {isSubmitting ? "Creating Goal on Stellar..." : "Create Savings Goal"}
+                {isSubmitting ? "Waiting for Stellar confirmation…" : "Create Savings Goal"}
               </button>
 
-              {createdSuccess && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center text-xs text-emerald-400 font-semibold"
-                >
-                  Savings goal created. Redirecting…
+              {createdReceipt && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-2">
+                  <TxReceiptCard receipt={createdReceipt} />
+                  <p className="text-center text-xs text-emerald-400 font-semibold">Redirecting to your goals…</p>
                 </motion.div>
               )}
               {createError && (

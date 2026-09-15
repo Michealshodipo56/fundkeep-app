@@ -3,8 +3,9 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useWallet } from "@/lib/wallet-context";
+import { useWallet, type TxReceipt } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
+import { TxReceiptCard } from "@/components/TxReceiptCard";
 import { CADENCE_LABELS, formatDeadline, formatUsdc, suggestedSaveAmount } from "@/lib/utils";
 
 export default function GoalsPage() {
@@ -13,13 +14,16 @@ export default function GoalsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawReceipt, setWithdrawReceipt] = useState<TxReceipt | null>(null);
 
   const handleWithdraw = useCallback(
     async (goalId: string) => {
       setWithdrawingId(goalId);
       setWithdrawError(null);
+      setWithdrawReceipt(null);
       try {
-        await withdrawGoal(goalId);
+        const receipt = await withdrawGoal(goalId);
+        setWithdrawReceipt(receipt);
       } catch (err) {
         setWithdrawError(err instanceof Error ? err.message : "Failed to withdraw.");
       } finally {
@@ -83,6 +87,7 @@ export default function GoalsPage() {
         {withdrawError && (
           <p className="text-xs text-red font-semibold">{withdrawError}</p>
         )}
+        {withdrawReceipt && <TxReceiptCard receipt={withdrawReceipt} />}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredGoals.length === 0 && (
@@ -157,7 +162,7 @@ export default function GoalsPage() {
                       disabled={withdrawingId === goal.id}
                       className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold disabled:opacity-60"
                     >
-                      {withdrawingId === goal.id ? "Withdrawing…" : "Withdraw Funds"}
+                      {withdrawingId === goal.id ? "Waiting for confirmation…" : "Withdraw Funds"}
                     </button>
                   )}
                 </div>

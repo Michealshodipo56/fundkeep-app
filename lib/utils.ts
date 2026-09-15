@@ -27,9 +27,14 @@ export function getGreeting(): string {
   return "Good evening";
 }
 
+function parseLocalDate(isoDate: string): Date {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(year || 1970, (month || 1) - 1, day || 1);
+}
+
 export function formatDeadline(isoDate: string): string {
   try {
-    const d = new Date(isoDate);
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalDate(isoDate) : new Date(isoDate);
     if (Number.isNaN(d.getTime())) return isoDate;
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   } catch {
@@ -56,7 +61,7 @@ export function formatUsdc(amount: number): string {
 export function daysUntil(isoDate: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const end = new Date(isoDate);
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? parseLocalDate(isoDate) : new Date(isoDate);
   end.setHours(0, 0, 0, 0);
   return Math.ceil((end.getTime() - now.getTime()) / 86_400_000);
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
-import { configuredNetwork, shortAddress } from "@/lib/utils";
+import { configuredNetwork, formatUsdc, shortAddress } from "@/lib/utils";
 
 export type AppNavKey =
   | "dashboard"
@@ -92,8 +92,21 @@ export function AppShell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const { walletAddress, disconnect, hydrated, isOnChain } = useWallet();
+  const {
+    walletAddress,
+    disconnect,
+    hydrated,
+    isOnChain,
+    accountFunded,
+    fundingAccount,
+    fundTestnetAccount,
+    usdcBalance,
+    usdcBalanceLoading,
+    usdcBalanceError,
+    refreshUsdcBalance,
+  } = useWallet();
   const network = configuredNetwork();
+  const [fundError, setFundError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState(false);
 
@@ -191,6 +204,36 @@ export function AppShell({
           </div>
 
           <div className="flex flex-col gap-3 pt-6 border-t border-white/10">
+            {accountFunded === false && network === "TESTNET" && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col gap-2">
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  This wallet is not on Stellar Testnet yet, so it cannot create a goal. Fund it with test XLM, keep Freighter on Testnet, then retry.
+                </p>
+                <button
+                  type="button"
+                  disabled={fundingAccount}
+                  onClick={async () => {
+                    setFundError(null);
+                    try {
+                      await fundTestnetAccount();
+                    } catch (err) {
+                      setFundError(err instanceof Error ? err.message : "Funding failed.");
+                    }
+                  }}
+                  className="w-full py-2 rounded-lg bg-amber-500/20 text-amber-100 text-[11px] font-bold disabled:opacity-60"
+                >
+                  {fundingAccount ? "Funding…" : "Fund Testnet account"}
+                </button>
+                {fundError && <p className="text-[10px] text-red">{fundError}</p>}
+              </div>
+            )}
+            {accountFunded === false && network === "PUBLIC" && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  This wallet has no Stellar Mainnet account yet. It needs XLM before it can submit transactions.
+                </p>
+              </div>
+            )}
             {!isOnChain && (
               <p className="text-[10px] text-amber-400/90 px-1">
                 Local mode — contract ID is not configured, so changes stay on this device.
@@ -216,10 +259,31 @@ export function AppShell({
                   )}
                 </button>
               </div>
-              <div className="flex items-center gap-1.5 mt-2 text-[10px] text-emerald-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {network}
+              <div className="flex items-center justify-between gap-2 mt-2">
+                <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {network}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refreshUsdcBalance()}
+                  disabled={usdcBalanceLoading}
+                  className="text-[10px] text-white/50 hover:text-white disabled:opacity-50"
+                >
+                  {usdcBalanceLoading ? "Refreshing…" : "Refresh USDC"}
+                </button>
               </div>
+              <p className="text-[11px] text-white/70 mt-1.5">
+                Wallet USDC:{" "}
+                {usdcBalanceLoading && usdcBalance === null
+                  ? "…"
+                  : usdcBalance === null
+                  ? "Unavailable"
+                  : `${formatUsdc(usdcBalance)}`}
+              </p>
+              {usdcBalanceError && (
+                <p className="text-[10px] text-amber-300 mt-1 leading-relaxed">{usdcBalanceError}</p>
+              )}
             </div>
 
             <button
@@ -245,7 +309,39 @@ export function AppShell({
         />
       )}
 
-      <div className="flex-1 min-w-0">{children}</div>
+      <div className="flex-1 min-w-0">
+        {accountFunded === false && network === "TESTNET" && (
+          <div className="m-4 sm:m-6 mb-0 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="text-xs text-amber-100/90 leading-relaxed flex-1">
+              Your Freighter address is not on Stellar Testnet yet, so creating a goal will fail. Fund it with test XLM first, and keep Freighter set to Testnet.
+            </p>
+            <button
+              type="button"
+              disabled={fundingAccount}
+              onClick={async () => {
+                setFundError(null);
+                try {
+                  await fundTestnetAccount();
+                } catch (err) {
+                  setFundError(err instanceof Error ? err.message : "Funding failed.");
+                }
+              }}
+              className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-500/20 text-amber-50 text-xs font-bold disabled:opacity-60"
+            >
+              {fundingAccount ? "Funding…" : "Fund Testnet account"}
+            </button>
+            {fundError && <p className="text-[11px] text-red sm:w-full">{fundError}</p>}
+          </div>
+        )}
+        {accountFunded === false && network === "PUBLIC" && (
+          <div className="m-4 sm:m-6 mb-0 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">
+            <p className="text-xs text-amber-100/90 leading-relaxed">
+              This wallet has no Stellar Mainnet account yet. It needs XLM before it can submit transactions.
+            </p>
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

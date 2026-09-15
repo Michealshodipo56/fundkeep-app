@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
 import { configuredNetwork, formatUsdc, shortAddress } from "@/lib/utils";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/lib/validation";
 
 type TabType = "profile" | "preferences" | "security";
 
@@ -22,12 +23,19 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("profile");
   const [nameDraft, setNameDraft] = useState(profile.displayName);
   const [saved, setSaved] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const configured = configuredNetwork();
 
   const handleSaveName = () => {
-    setDisplayName(nameDraft);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      setDisplayName(nameDraft);
+      setNameError(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaved(false);
+      setNameError(err instanceof Error ? err.message : "Could not save display name.");
+    }
   };
 
   const initials = (profile.displayName || shortAddress(walletAddress || "FK"))
@@ -88,8 +96,12 @@ export default function SettingsPage() {
                   <div className="flex gap-2">
                     <input
                       type="text"
+                      maxLength={DISPLAY_NAME_MAX_LENGTH}
                       value={nameDraft}
-                      onChange={(e) => setNameDraft(e.target.value)}
+                      onChange={(e) => {
+                        setNameDraft(e.target.value);
+                        setNameError(null);
+                      }}
                       placeholder="Optional nickname"
                       className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/10 text-sm text-white focus:outline-none focus:border-red"
                     />
@@ -101,6 +113,10 @@ export default function SettingsPage() {
                       Save
                     </button>
                   </div>
+                  <p className="text-[10px] text-white/35 mt-1 text-right">
+                    {nameDraft.trim().length}/{DISPLAY_NAME_MAX_LENGTH}
+                  </p>
+                  {nameError && <p className="text-[11px] text-red mt-2">{nameError}</p>}
                   {saved && <p className="text-[11px] text-emerald-400 mt-2">Saved on this device.</p>}
                 </div>
               </div>

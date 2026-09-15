@@ -12,12 +12,23 @@ import React, {
 import { signTransaction } from "@stellar/freighter-api";
 import { toStroops, fromStroops, deriveGoalStatus } from "@fundkeep/sdk";
 import { connectFreighter } from "./freighter";
-import { getFundKeepClient, getUsdcContractId } from "./contract";
+import {
+  getFundKeepClient,
+  getOnChainConfigurationError,
+  getUsdcContractId,
+} from "./contract";
 import { fetchIndexedActivity, fetchIndexedGoals } from "./indexer";
 import { fetchUsdcBalance } from "./usdc-balance";
+import {
+  accountExistsOnNetwork,
+  explainChainError,
+  fundTestnetAccount as requestFriendbot,
+} from "./stellar-account";
+import { receiptFromSdk, waitForIndexedTx, type TxReceipt } from "./tx";
+import { validateDepositAmount, validateDisplayName, validateGoalInput } from "./validation";
 import { configuredNetwork, type SaveCadence } from "./utils";
 
-export type { SaveCadence };
+export type { SaveCadence, TxReceipt };
 
 export interface SavingsGoal {
   id: string;
@@ -38,6 +49,7 @@ export interface ActivityEntry {
   goalTitle: string;
   amount?: number;
   timestamp: string;
+  txHash?: string;
 }
 
 export interface WalletProfile {
@@ -53,7 +65,6 @@ export interface WalletContextValue {
   isOnChain: boolean;
   connect: () => Promise<{ success: boolean; error?: string }>;
   disconnect: () => void;
-  setNetwork: (n: "TESTNET" | "PUBLIC") => void;
 
   goals: SavingsGoal[];
   createGoal: (params: {
@@ -62,9 +73,9 @@ export interface WalletContextValue {
     cadence: SaveCadence;
     target: number;
     deadline: string;
-  }) => Promise<SavingsGoal>;
-  depositToGoal: (goalId: string, amount: number) => Promise<void>;
-  withdrawGoal: (goalId: string) => Promise<void>;
+  }) => Promise<{ goal: SavingsGoal; receipt: TxReceipt }>;
+  depositToGoal: (goalId: string, amount: number) => Promise<TxReceipt>;
+  withdrawGoal: (goalId: string) => Promise<TxReceipt>;
   checkDeadlines: () => Promise<void>;
 
   activity: ActivityEntry[];
@@ -73,7 +84,12 @@ export interface WalletContextValue {
   setAnimations: (on: boolean) => void;
   usdcBalance: number | null;
   usdcBalanceLoading: boolean;
+  usdcBalanceError: string | null;
   refreshUsdcBalance: () => Promise<void>;
+  lastReceipt: TxReceipt | null;
+  accountFunded: boolean | null;
+  fundingAccount: boolean;
+  fundTestnetAccount: () => Promise<void>;
 
   stats: {
     totalSaved: number;
@@ -86,7 +102,6 @@ export interface WalletContextValue {
 }
 
 const STORAGE_KEY_WALLET = "fk_wallet_address";
-const STORAGE_KEY_NETWORK = "fk_network";
 
 type WalletBundle = {
   goals: SavingsGoal[];
@@ -168,7 +183,7 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [network, setNetworkState] = useState<"TESTNET" | "PUBLIC">(configuredNetwork());
+  const network = configuredNetwork();
   const [isConnecting, setIsConnecting] = useState(false);
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -176,6 +191,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
   const [usdcBalanceLoading, setUsdcBalanceLoading] = useState(false);
+  const [usdcBalanceError, setUsdcBalanceError] = useState<string | null>(null);
+  const [lastReceipt, setLastReceipt] = useState<TxReceipt | null>(null);
+  const [accountFunded, setAccountFunded] = useState<boolean | null>(null);
+  const [fundingAccount, setFundingAccount] = useState(false);
 
   const isOnChain = !!getFundKeepClient();
 
@@ -194,6 +213,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     walletAddressRef.current = walletAddress;
   }, [walletAddress]);
 
+  const accountFundedRef = useRef(accountFunded);
+  useEffect(() => {
+    accountFundedRef.current = accountFunded;
+  }, [accountFunded]);
+
   useEffect(() => {
     const storedWallet = loadFromStorage<string | null>(STORAGE_KEY_WALLET, null);
     const validWallet = storedWallet && isStellarPublicKey(storedWallet) ? storedWallet : null;
@@ -201,7 +225,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     /* Hydrate from localStorage after mount to avoid SSR mismatch. */
     /* eslint-disable react-hooks/set-state-in-effect */
     setWalletAddress(validWallet);
-    setNetworkState(configuredNetwork());
     if (validWallet) {
       const bundle = loadBundle(validWallet);
       setGoals(bundle.goals);
@@ -229,13 +252,52 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const address = walletAddressRef.current;
     if (!address) {
       setUsdcBalance(null);
+      setUsdcBalanceError(null);
       return;
     }
     setUsdcBalanceLoading(true);
-    const balance = await fetchUsdcBalance(address);
-    setUsdcBalance(balance);
-    setUsdcBalanceLoading(false);
+    try {
+      const result = await fetchUsdcBalance(address);
+      if (result.ok) {
+        setUsdcBalance(result.balance);
+        setUsdcBalanceError(null);
+      } else {
+        setUsdcBalanceError(result.error);
+        if (result.accountMissing) {
+          setAccountFunded(false);
+          setUsdcBalance(null);
+        }
+      }
+    } finally {
+      setUsdcBalanceLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || !walletAddress) return;
+    let cancelled = false;
+    void accountExistsOnNetwork(walletAddress).then((exists) => {
+      if (!cancelled) setAccountFunded(exists);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, walletAddress]);
+
+  const fundTestnetAccount = useCallback(async () => {
+    const address = walletAddressRef.current;
+    if (!address) throw new Error("Connect a wallet first.");
+    setFundingAccount(true);
+    try {
+      await requestFriendbot(address);
+      setAccountFunded(true);
+      void refreshUsdcBalance();
+    } catch (err) {
+      throw new Error(explainChainError(err));
+    } finally {
+      setFundingAccount(false);
+    }
+  }, [refreshUsdcBalance]);
 
   useEffect(() => {
     if (!hydrated || !walletAddress) return;
@@ -286,6 +348,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
               goalTitle: titleById.get(String(ia.goalId)) ?? `Savings Goal #${ia.goalId}`,
               amount: ia.amount ? fromStroops(BigInt(ia.amount)) : undefined,
               timestamp: ia.createdAt,
+              txHash: ia.txHash ?? undefined,
             }))
           );
           return currentGoals;
@@ -327,16 +390,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setActivity([]);
     setProfile({ displayName: "", animations: true });
     setUsdcBalance(null);
+    setUsdcBalanceError(null);
+    setLastReceipt(null);
+    setAccountFunded(null);
     localStorage.removeItem(STORAGE_KEY_WALLET);
   }, []);
 
-  const setNetwork = useCallback((n: "TESTNET" | "PUBLIC") => {
-    setNetworkState(n);
-    saveToStorage(STORAGE_KEY_NETWORK, n);
-  }, []);
-
   const setDisplayName = useCallback((name: string) => {
-    setProfile((prev) => ({ ...prev, displayName: name.trim() }));
+    setProfile((prev) => ({ ...prev, displayName: validateDisplayName(name) }));
   }, []);
 
   const setAnimations = useCallback((on: boolean) => {
@@ -344,16 +405,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
-    const duplicate = activityRef.current.some(
-      (a) =>
+    const duplicate = activityRef.current.some((a) => {
+      if (entry.txHash && a.txHash && a.txHash === entry.txHash && a.type === entry.type) return true;
+      return (
         a.type === entry.type &&
         a.goalId === entry.goalId &&
         Math.abs(new Date(a.timestamp).getTime() - new Date(entry.timestamp).getTime()) < 15_000
-    );
+      );
+    });
     if (duplicate) return;
     const newEntry: ActivityEntry = { ...entry, id: `act-${Date.now()}` };
     setActivity((prev) => [newEntry, ...prev]);
   }, []);
+
+  const confirmSentTx = useCallback(
+    async (sent: { hash?: string; ledger?: number } | undefined): Promise<TxReceipt> => {
+      const receipt = receiptFromSdk(sent);
+      const owner = walletAddressRef.current;
+      if (receipt.hash && owner) {
+        receipt.indexed = await waitForIndexedTx(owner, receipt.hash);
+      }
+      setLastReceipt(receipt);
+      return receipt;
+    },
+    []
+  );
 
   const createGoal = useCallback(
     async (params: {
@@ -362,20 +438,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       cadence: SaveCadence;
       target: number;
       deadline: string;
-    }): Promise<SavingsGoal> => {
-      const title = params.title.trim();
-      if (!title) throw new Error("Goal title is required.");
-      if (!Number.isFinite(params.target) || params.target <= 0) {
-        throw new Error("Target amount must be greater than 0.");
+    }): Promise<{ goal: SavingsGoal; receipt: TxReceipt }> => {
+      const validated = validateGoalInput(params);
+
+      const configurationError = getOnChainConfigurationError();
+      if (configurationError) throw new Error(configurationError);
+
+      if (accountFundedRef.current === false) {
+        throw new Error(explainChainError(new Error("Account not found")));
       }
-      const deadline =
-        params.deadline ||
-        new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       let id: string;
+      let receipt: TxReceipt = {};
       const client = walletAddress ? getFundKeepClient() : null;
 
-      if (client && walletAddress) {
+      if (!client || !walletAddress) {
+        throw new Error("Connect a Freighter wallet before creating a savings goal.");
+      }
+
+      try {
         const usdc = getUsdcContractId();
         if (!usdc) {
           throw new Error("USDC token contract is not configured (NEXT_PUBLIC_USDC_CONTRACT_ID).");
@@ -384,25 +465,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const tx = await client.buildCreateGoalTx({
           owner: walletAddress,
           token: usdc,
-          targetAmount: toStroops(params.target),
-          deadline: dateToLedgerSeconds(deadline),
+          targetAmount: toStroops(validated.target),
+          deadline: dateToLedgerSeconds(validated.deadline),
         });
-        const { value: goalId } = await client.signAndSend<number>(tx, signTransaction, {
+        const sent = await client.signAndSend<number>(tx, signTransaction, {
           address: walletAddress,
         });
-        id = String(goalId);
-      } else {
-        id = `goal-${Date.now()}`;
+        if (sent.value === undefined || sent.value === null) {
+          throw new Error("Goal was confirmed on Stellar but the contract did not return an id.");
+        }
+        receipt = await confirmSentTx(sent);
+        id = String(sent.value);
+      } catch (err) {
+        throw new Error(explainChainError(err));
       }
 
       const newGoal: SavingsGoal = {
         id,
-        title,
-        description: params.description?.trim() || undefined,
-        cadence: params.cadence,
-        deadline,
+        title: validated.title,
+        description: validated.description,
+        cadence: validated.cadence,
+        deadline: validated.deadline,
         saved: 0,
-        target: params.target,
+        target: validated.target,
         status: "LOCKED",
         createdAt: new Date().toISOString(),
       };
@@ -413,38 +498,54 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         goalId: newGoal.id,
         goalTitle: newGoal.title,
         timestamp: new Date().toISOString(),
+        txHash: receipt.hash,
       });
 
-      return newGoal;
+      return { goal: newGoal, receipt };
     },
-    [walletAddress, addActivity]
+    [walletAddress, addActivity, confirmSentTx]
   );
 
   const depositToGoal = useCallback(
-    async (goalId: string, amount: number) => {
-      if (!Number.isFinite(amount) || amount <= 0) {
-        throw new Error("Deposit amount must be greater than 0.");
-      }
+    async (goalId: string, amount: number): Promise<TxReceipt> => {
       const goal = goals.find((g) => g.id === goalId);
       if (!goal) throw new Error("Goal not found.");
       if (goal.status !== "LOCKED") throw new Error("This goal is not accepting deposits.");
 
+      const remaining = Math.max(0, goal.target - goal.saved);
+      const validatedAmount = validateDepositAmount(amount, remaining);
+
+      const configurationError = getOnChainConfigurationError();
+      if (configurationError) throw new Error(configurationError);
+
+      if (accountFundedRef.current === false) {
+        throw new Error(explainChainError(new Error("Account not found")));
+      }
+
       const client = walletAddress ? getFundKeepClient() : null;
 
-      let newSaved = Math.min(goal.saved + amount, goal.target);
-      let unlocked = newSaved >= goal.target;
+      let newSaved: number;
+      let unlocked: boolean;
+      let receipt: TxReceipt = {};
 
-      if (client && walletAddress) {
+      if (!client || !walletAddress) {
+        throw new Error("Connect a Freighter wallet before depositing USDC.");
+      }
+
+      try {
         const tx = await client.buildDepositTx({
           caller: walletAddress,
           goalId: Number(goalId),
-          amount: toStroops(amount),
+          amount: toStroops(validatedAmount),
         });
-        await client.signAndSend(tx, signTransaction, { address: walletAddress });
+        const sent = await client.signAndSend(tx, signTransaction, { address: walletAddress });
+        receipt = await confirmSentTx(sent);
 
         const onChain = await client.getGoal(Number(goalId));
         newSaved = fromStroops(onChain.currentAmount);
         unlocked = onChain.unlocked;
+      } catch (err) {
+        throw new Error(explainChainError(err));
       }
 
       setGoals((prev) =>
@@ -459,8 +560,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         type: "deposit",
         goalId,
         goalTitle: goal.title,
-        amount,
+        amount: validatedAmount,
         timestamp: new Date().toISOString(),
+        txHash: receipt.hash,
       });
 
       if (unlocked) {
@@ -470,28 +572,45 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           goalTitle: goal.title,
           amount: newSaved,
           timestamp: new Date().toISOString(),
+          txHash: receipt.hash,
         });
       }
 
       void refreshUsdcBalance();
+      return receipt;
     },
-    [goals, walletAddress, addActivity, refreshUsdcBalance]
+    [goals, walletAddress, addActivity, refreshUsdcBalance, confirmSentTx]
   );
 
   const withdrawGoal = useCallback(
-    async (goalId: string) => {
+    async (goalId: string): Promise<TxReceipt> => {
       const goal = goals.find((g) => g.id === goalId);
       if (!goal) throw new Error("Goal not found.");
       if (goal.status !== "UNLOCKED") throw new Error("This goal is still locked.");
 
-      const client = walletAddress ? getFundKeepClient() : null;
+      const configurationError = getOnChainConfigurationError();
+      if (configurationError) throw new Error(configurationError);
 
-      if (client && walletAddress) {
+      if (accountFundedRef.current === false) {
+        throw new Error(explainChainError(new Error("Account not found")));
+      }
+
+      const client = walletAddress ? getFundKeepClient() : null;
+      let receipt: TxReceipt = {};
+
+      if (!client || !walletAddress) {
+        throw new Error("Connect a Freighter wallet before withdrawing USDC.");
+      }
+
+      try {
         const tx = await client.buildWithdrawTx({
           caller: walletAddress,
           goalId: Number(goalId),
         });
-        await client.signAndSend(tx, signTransaction, { address: walletAddress });
+        const sent = await client.signAndSend(tx, signTransaction, { address: walletAddress });
+        receipt = await confirmSentTx(sent);
+      } catch (err) {
+        throw new Error(explainChainError(err));
       }
 
       setGoals((prev) =>
@@ -504,14 +623,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         goalTitle: goal.title,
         amount: goal.saved,
         timestamp: new Date().toISOString(),
+        txHash: receipt.hash,
       });
 
       void refreshUsdcBalance();
+      return receipt;
     },
-    [goals, walletAddress, addActivity, refreshUsdcBalance]
+    [goals, walletAddress, addActivity, refreshUsdcBalance, confirmSentTx]
   );
 
   const checkDeadlines = useCallback(async () => {
+    if (accountFundedRef.current === false) return;
+
     const currentWalletAddress = walletAddressRef.current;
     const client = currentWalletAddress ? getFundKeepClient() : null;
     const now = new Date();
@@ -520,26 +643,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       (g) => g.status === "LOCKED" && new Date(g.deadline) <= now
     );
 
-    const logUnlock = (g: SavingsGoal, amount: number) => {
+    const logUnlock = (g: SavingsGoal, amount: number, txHash?: string) => {
       addActivity({
         type: "unlock",
         goalId: g.id,
         goalTitle: g.title,
         amount,
         timestamp: new Date().toISOString(),
+        txHash,
       });
     };
 
-    if (!client || !currentWalletAddress) {
-      if (overdue.length === 0) return;
-      setGoals((prev) =>
-        prev.map((g) =>
-          overdue.some((u) => u.id === g.id) ? { ...g, status: "UNLOCKED" } : g
-        )
-      );
-      for (const g of overdue) logUnlock(g, g.saved);
-      return;
-    }
+    if (!client || !currentWalletAddress) return;
 
     for (const g of overdue) {
       try {
@@ -547,20 +662,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           source: currentWalletAddress,
           goalId: Number(g.id),
         });
-        await client.signAndSend(tx, signTransaction, { address: currentWalletAddress });
+        const sent = await client.signAndSend(tx, signTransaction, { address: currentWalletAddress });
+        const receipt = await confirmSentTx(sent);
 
         const onChain = await client.getGoal(Number(g.id));
         const status = deriveGoalStatus(onChain);
         setGoals((prev) => prev.map((p) => (p.id === g.id ? { ...p, status } : p)));
 
         if (status === "UNLOCKED") {
-          logUnlock(g, fromStroops(onChain.currentAmount));
+          logUnlock(g, fromStroops(onChain.currentAmount), receipt.hash);
         }
       } catch {
         // Best-effort background check
       }
     }
-  }, [addActivity]);
+  }, [addActivity, confirmSentTx]);
 
   const totalSaved = goals.reduce((sum, g) => sum + g.saved, 0);
   const totalTarget = goals.reduce((sum, g) => sum + g.target, 0);
@@ -592,7 +708,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isOnChain,
         connect,
         disconnect,
-        setNetwork,
         goals,
         createGoal,
         depositToGoal,
@@ -604,7 +719,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setAnimations,
         usdcBalance,
         usdcBalanceLoading,
+        usdcBalanceError,
         refreshUsdcBalance,
+        lastReceipt,
+        accountFunded,
+        fundingAccount,
+        fundTestnetAccount,
         stats,
       }}
     >

@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { useWallet, type ActivityEntry } from "@/lib/wallet-context";
+import { useWallet, type ActivityEntry, type TxReceipt } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
 import { CadencePicker, SavePlanHint } from "@/components/CadencePicker";
+import { TxReceiptCard } from "@/components/TxReceiptCard";
+import { TITLE_MAX_LENGTH, USDC_MAX, USDC_MIN, farFutureDeadline, todayIsoDate } from "@/lib/validation";
 import {
   CADENCE_LABELS,
   formatDeadline,
@@ -107,10 +109,18 @@ export default function DashboardPage() {
   const [newGoalCadence, setNewGoalCadence] = useState<SaveCadence>("weekly");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createdReceipt, setCreatedReceipt] = useState<TxReceipt | null>(null);
 
   useEffect(() => {
     void checkDeadlines();
   }, [checkDeadlines]);
+
+  const closeCreateModal = useCallback(() => {
+    if (creating) return;
+    setCreateModalOpen(false);
+    setCreateError(null);
+    setCreatedReceipt(null);
+  }, [creating]);
 
   const handleCreateGoal = useCallback(
     async (e: React.FormEvent) => {
@@ -118,9 +128,10 @@ export default function DashboardPage() {
       if (!newGoalTitle || !newGoalTarget || !newGoalDeadline) return;
       setCreating(true);
       setCreateError(null);
+      setCreatedReceipt(null);
 
       try {
-        await createGoal({
+        const { receipt } = await createGoal({
           title: newGoalTitle,
           cadence: newGoalCadence,
           target: parseFloat(newGoalTarget),
@@ -131,7 +142,7 @@ export default function DashboardPage() {
         setNewGoalTarget("");
         setNewGoalDeadline("");
         setNewGoalCadence("weekly");
-        setCreateModalOpen(false);
+        setCreatedReceipt(receipt);
       } catch (err) {
         setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
       } finally {
@@ -176,7 +187,11 @@ export default function DashboardPage() {
 
             <button
               type="button"
-              onClick={() => setCreateModalOpen(true)}
+              onClick={() => {
+                setCreatedReceipt(null);
+                setCreateError(null);
+                setCreateModalOpen(true);
+              }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red text-white text-xs sm:text-sm font-semibold transition-all hover:opacity-90 hover:shadow-[0_0_20px_rgba(224,52,42,0.4)] glow-red"
             >
               <span className="text-base font-bold">+</span>
@@ -263,7 +278,11 @@ export default function DashboardPage() {
                   <p className="text-xs text-white/40 mt-1">Create a goal to start locking USDC on Stellar.</p>
                   <button
                     type="button"
-                    onClick={() => setCreateModalOpen(true)}
+                    onClick={() => {
+                setCreatedReceipt(null);
+                setCreateError(null);
+                setCreateModalOpen(true);
+              }}
                     className="mt-4 px-4 py-2 rounded-xl bg-red text-white text-xs font-bold"
                   >
                     Create your first goal
@@ -347,7 +366,11 @@ export default function DashboardPage() {
 
               <button
                 type="button"
-                onClick={() => setCreateModalOpen(true)}
+                onClick={() => {
+                setCreatedReceipt(null);
+                setCreateError(null);
+                setCreateModalOpen(true);
+              }}
                 className="w-full p-4 rounded-2xl border-2 border-dashed border-white/10 hover:border-red/40 hover:bg-red/5 transition-all text-xs font-bold text-white/60 hover:text-white flex items-center justify-center gap-2 min-h-[54px]"
               >
                 + Create New Goal
@@ -424,7 +447,7 @@ export default function DashboardPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setCreateModalOpen(false)}
+              onClick={closeCreateModal}
               className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
             <motion.div
@@ -438,24 +461,41 @@ export default function DashboardPage() {
                 <h2 className="text-lg font-bold text-white">Create New Saving Goal</h2>
                 <button
                   type="button"
-                  onClick={() => setCreateModalOpen(false)}
+                  onClick={closeCreateModal}
                   className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center"
                 >
                   ✕
                 </button>
               </div>
 
+              {createdReceipt ? (
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm font-semibold text-white">Savings goal created.</p>
+                  <TxReceiptCard receipt={createdReceipt} />
+                  <button
+                    type="button"
+                    onClick={closeCreateModal}
+                    className="w-full py-3 px-4 rounded-xl bg-red text-white text-xs font-semibold glow-red"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
               <form onSubmit={handleCreateGoal} className="flex flex-col gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-white/70 mb-1.5">Goal Title</label>
                   <input
                     type="text"
                     required
+                    maxLength={TITLE_MAX_LENGTH}
                     value={newGoalTitle}
                     onChange={(e) => setNewGoalTitle(e.target.value)}
                     placeholder="e.g. Emergency Fund"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-white placeholder-white/20 focus:outline-none focus:border-red"
                   />
+                  <p className="text-[10px] text-white/35 mt-1 text-right">
+                    {newGoalTitle.trim().length}/{TITLE_MAX_LENGTH}
+                  </p>
                 </div>
 
                 <div>
@@ -471,7 +511,8 @@ export default function DashboardPage() {
                   <input
                     type="number"
                     step="0.01"
-                    min="1"
+                    min={USDC_MIN}
+                    max={USDC_MAX}
                     required
                     value={newGoalTarget}
                     onChange={(e) => setNewGoalTarget(e.target.value)}
@@ -486,7 +527,8 @@ export default function DashboardPage() {
                     type="date"
                     required
                     value={newGoalDeadline}
-                    min={new Date().toISOString().slice(0, 10)}
+                    min={todayIsoDate()}
+                    max={farFutureDeadline()}
                     onChange={(e) => setNewGoalDeadline(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-sm text-white focus:outline-none focus:border-red"
                   />
@@ -498,8 +540,9 @@ export default function DashboardPage() {
                 <div className="flex gap-2 mt-2">
                   <button
                     type="button"
-                    onClick={() => setCreateModalOpen(false)}
-                    className="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold"
+                    onClick={closeCreateModal}
+                    disabled={creating}
+                    className="flex-1 py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 text-xs font-semibold disabled:opacity-60"
                   >
                     Cancel
                   </button>
@@ -508,10 +551,11 @@ export default function DashboardPage() {
                     disabled={creating}
                     className="flex-1 py-3 px-4 rounded-xl bg-red text-white text-xs font-semibold glow-red disabled:opacity-60"
                   >
-                    {creating ? "Creating…" : "Create Goal"}
+                    {creating ? "Waiting for Stellar confirmation…" : "Create Goal"}
                   </button>
                 </div>
               </form>
+              )}
             </motion.div>
           </div>
         )}

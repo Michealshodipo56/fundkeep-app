@@ -3,19 +3,22 @@
 import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useWallet } from "@/lib/wallet-context";
+import { useWallet, type TxReceipt } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
+import { TxReceiptCard } from "@/components/TxReceiptCard";
 import { CADENCE_LABELS, formatUsdc } from "@/lib/utils";
+import { USDC_MAX, USDC_MIN } from "@/lib/validation";
 
 function DepositFormContent() {
   const searchParams = useSearchParams();
   const initialGoalId = searchParams.get("goalId") || "";
-  const { goals, depositToGoal, usdcBalance, usdcBalanceLoading, refreshUsdcBalance } = useWallet();
+  const { goals, depositToGoal, usdcBalance, usdcBalanceLoading, usdcBalanceError, refreshUsdcBalance } =
+    useWallet();
 
   const [selectedGoalId, setSelectedGoalId] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [depositSuccess, setDepositSuccess] = useState(false);
+  const [depositReceipt, setDepositReceipt] = useState<TxReceipt | null>(null);
   const [depositError, setDepositError] = useState<string | null>(null);
 
   const lockedGoals = goals.filter((g) => g.status === "LOCKED");
@@ -35,16 +38,23 @@ function DepositFormContent() {
     ? Math.min(100, Math.round((newSaved / selectedGoal.target) * 100) || 0)
     : 0;
 
+  const remaining = selectedGoal ? Math.max(0, selectedGoal.target - selectedGoal.saved) : 0;
+  const exceedsHorizon =
+    usdcBalance !== null && Number.isFinite(amountNum) && amountNum > usdcBalance + 1e-9;
+
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedGoal || !amountNum || amountNum <= 0) return;
+    if (!selectedGoal) {
+      setDepositError("Select a locked goal first.");
+      return;
+    }
     setIsSubmitting(true);
     setDepositError(null);
+    setDepositReceipt(null);
     try {
-      await depositToGoal(selectedGoal.id, amountNum);
-      setDepositSuccess(true);
+      const receipt = await depositToGoal(selectedGoal.id, Number(depositAmount));
+      setDepositReceipt(receipt);
       setDepositAmount("");
-      setTimeout(() => setDepositSuccess(false), 3000);
       void refreshUsdcBalance();
     } catch (err) {
       setDepositError(err instanceof Error ? err.message : "Failed to deposit.");
@@ -92,25 +102,48 @@ function DepositFormContent() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-semibold text-white/70">Deposit Amount</label>
-                    <span className="text-[11px] text-white/40">
+                    <span className="text-[11px] text-white/40 flex items-center gap-2">
                       Wallet USDC:{" "}
                       {usdcBalanceLoading
                         ? "…"
                         : usdcBalance === null
                         ? "Unavailable"
                         : `${formatUsdc(usdcBalance)} USDC`}
+                      <button
+                        type="button"
+                        onClick={() => void refreshUsdcBalance()}
+                        disabled={usdcBalanceLoading}
+                        className="text-red font-semibold hover:underline disabled:opacity-50"
+                      >
+                        Refresh
+                      </button>
                     </span>
                   </div>
                   <input
                     type="number"
                     step="0.01"
-                    min="0.01"
+                    min={USDC_MIN}
+                    max={Math.min(USDC_MAX, remaining || USDC_MAX)}
                     required
                     value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
+                    onChange={(e) => {
+                      setDepositAmount(e.target.value);
+                      setDepositReceipt(null);
+                    }}
                     placeholder="0.00"
                     className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 text-sm text-white placeholder-white/20 font-mono font-bold focus:outline-none focus:border-red"
                   />
+                  <p className="text-[11px] text-white/35 mt-2">
+                    Remaining on this goal: {formatUsdc(remaining)} USDC
+                  </p>
+                  {usdcBalanceError && (
+                    <p className="text-[11px] text-amber-300 mt-2">{usdcBalanceError}</p>
+                  )}
+                  {exceedsHorizon && (
+                    <p className="text-[11px] text-amber-300 mt-2">
+                      This amount is higher than the USDC trustline Horizon reports. Contract USDC can differ; the chain will reject the deposit if the wallet cannot pay.
+                    </p>
+                  )}
                 </div>
 
                 {selectedGoal && (
@@ -131,16 +164,14 @@ function DepositFormContent() {
                 )}
 
                 {depositError && <p className="text-xs text-red font-semibold">{depositError}</p>}
-                {depositSuccess && (
-                  <p className="text-xs text-emerald-400 font-semibold">Deposit submitted.</p>
-                )}
+                {depositReceipt && <TxReceiptCard receipt={depositReceipt} />}
 
                 <button
                   type="submit"
                   disabled={isSubmitting || !selectedGoal}
                   className="w-full py-4 rounded-xl bg-red text-white text-sm font-bold glow-red disabled:opacity-60"
                 >
-                  {isSubmitting ? "Processing Deposit..." : "Deposit USDC"}
+                  {isSubmitting ? "Waiting for Stellar confirmation…" : "Deposit USDC"}
                 </button>
               </form>
             )}

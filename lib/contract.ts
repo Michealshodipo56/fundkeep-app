@@ -40,3 +40,19 @@ export function getFundKeepClient(): FundKeepClient | null {
 export function getUsdcContractId(): string | null {
   return process.env.NEXT_PUBLIC_USDC_CONTRACT_ID ?? null;
 }
+
+export function getNetworkPassphrase(): string {
+  return process.env.NEXT_PUBLIC_STELLAR_NETWORK === "mainnet"
+    ? Networks.PUBLIC
+    : Networks.TESTNET;
+}
+
+export function getOnChainConfigurationError(): string | null {
+  if (!process.env.NEXT_PUBLIC_CONTRACT_ID) {
+    return "FundKeep is not configured with a deployed savings contract.";
+  }
+  if (!getUsdcContractId()) {
+    return "FundKeep is not configured with its USDC token contract.";
+  }
+  return null;
+}
