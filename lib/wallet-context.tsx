@@ -11,21 +11,24 @@ import React, {
 } from "react";
 import { signTransaction } from "@stellar/freighter-api";
 import { toStroops, fromStroops, deriveGoalStatus } from "@fundkeep/sdk";
-import { connectFreighter, checkFreighterInstalled } from "./freighter";
+import { connectFreighter } from "./freighter";
 import { getFundKeepClient, getUsdcContractId } from "./contract";
 import { fetchIndexedActivity, fetchIndexedGoals } from "./indexer";
+import { fetchUsdcBalance } from "./usdc-balance";
+import { configuredNetwork, type SaveCadence } from "./utils";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export type { SaveCadence };
 
 export interface SavingsGoal {
   id: string;
   title: string;
-  category: "laptop" | "camera" | "travel" | "other";
-  deadline: string; // ISO date string "YYYY-MM-DD"
-  saved: number;    // USDC amount
-  target: number;   // USDC amount
+  description?: string;
+  cadence: SaveCadence;
+  deadline: string;
+  saved: number;
+  target: number;
   status: "LOCKED" | "UNLOCKED" | "WITHDRAWN";
-  createdAt: string; // ISO timestamp
+  createdAt: string;
 }
 
 export interface ActivityEntry {
@@ -34,24 +37,29 @@ export interface ActivityEntry {
   goalId: string;
   goalTitle: string;
   amount?: number;
-  timestamp: string; // ISO timestamp
+  timestamp: string;
+}
+
+export interface WalletProfile {
+  displayName: string;
+  animations: boolean;
 }
 
 export interface WalletContextValue {
-  // Wallet
   walletAddress: string | null;
   network: "TESTNET" | "PUBLIC";
   isConnecting: boolean;
-  isDemo: boolean;
+  hydrated: boolean;
+  isOnChain: boolean;
   connect: () => Promise<{ success: boolean; error?: string }>;
   disconnect: () => void;
   setNetwork: (n: "TESTNET" | "PUBLIC") => void;
 
-  // Goals
   goals: SavingsGoal[];
   createGoal: (params: {
     title: string;
-    category: SavingsGoal["category"];
+    description?: string;
+    cadence: SaveCadence;
     target: number;
     deadline: string;
   }) => Promise<SavingsGoal>;
@@ -59,10 +67,14 @@ export interface WalletContextValue {
   withdrawGoal: (goalId: string) => Promise<void>;
   checkDeadlines: () => Promise<void>;
 
-  // Activity
   activity: ActivityEntry[];
+  profile: WalletProfile;
+  setDisplayName: (name: string) => void;
+  setAnimations: (on: boolean) => void;
+  usdcBalance: number | null;
+  usdcBalanceLoading: boolean;
+  refreshUsdcBalance: () => Promise<void>;
 
-  // Derived stats
   stats: {
     totalSaved: number;
     activeGoals: number;
@@ -73,76 +85,18 @@ export interface WalletContextValue {
   };
 }
 
-// ─── Default / seed data ──────────────────────────────────────────────────────
-
-const DEMO_ADDRESS = "GAK3X57J29PQR8LMVW7890STUVWXNEON789";
-
-const SEED_GOALS: SavingsGoal[] = [
-  {
-    id: "goal-1",
-    title: "Buy a New Laptop",
-    category: "laptop",
-    deadline: "2026-12-30",
-    saved: 1250.0,
-    target: 1500.0,
-    status: "LOCKED",
-    createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "goal-2",
-    title: "New Camera Gear",
-    category: "camera",
-    deadline: "2026-09-15",
-    saved: 450.0,
-    target: 800.0,
-    status: "LOCKED",
-    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "goal-3",
-    title: "Trip to Japan",
-    category: "travel",
-    deadline: "2026-05-10",
-    saved: 1800.0,
-    target: 1800.0,
-    status: "UNLOCKED",
-    createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-const SEED_ACTIVITY: ActivityEntry[] = [
-  {
-    id: "act-1",
-    type: "deposit",
-    goalId: "goal-1",
-    goalTitle: "Buy a New Laptop",
-    amount: 200.0,
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "act-2",
-    type: "deposit",
-    goalId: "goal-2",
-    goalTitle: "New Camera Gear",
-    amount: 150.0,
-    timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "act-3",
-    type: "unlock",
-    goalId: "goal-3",
-    goalTitle: "Trip to Japan",
-    amount: 1800.0,
-    timestamp: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-// ─── Storage helpers ──────────────────────────────────────────────────────────
-
 const STORAGE_KEY_WALLET = "fk_wallet_address";
 const STORAGE_KEY_NETWORK = "fk_network";
-const STORAGE_KEY_GOALS = "fk_goals";
-const STORAGE_KEY_ACTIVITY = "fk_activity";
+
+type WalletBundle = {
+  goals: SavingsGoal[];
+  activity: ActivityEntry[];
+  profile: WalletProfile;
+};
+
+function bundleKey(address: string) {
+  return `fk_bundle_${address}`;
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -159,7 +113,48 @@ function saveToStorage<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-// ─── On-chain <-> local helpers ───────────────────────────────────────────────
+function isStellarPublicKey(addr: string): boolean {
+  return /^G[A-Z2-7]{55}$/.test(addr);
+}
+
+function emptyBundle(): WalletBundle {
+  return { goals: [], activity: [], profile: { displayName: "", animations: true } };
+}
+
+function loadBundle(address: string): WalletBundle {
+  const stored = loadFromStorage<WalletBundle | null>(bundleKey(address), null);
+  if (!stored) return emptyBundle();
+  return {
+    goals: Array.isArray(stored.goals) ? stored.goals.map(normalizeGoal) : [],
+    activity: Array.isArray(stored.activity) ? stored.activity : [],
+    profile: {
+      displayName: stored.profile?.displayName ?? "",
+      animations: stored.profile?.animations !== false,
+    },
+  };
+}
+
+function normalizeGoal(raw: SavingsGoal & { category?: string }): SavingsGoal {
+  const cadence: SaveCadence =
+    raw.cadence === "play" ||
+    raw.cadence === "task" ||
+    raw.cadence === "daily" ||
+    raw.cadence === "weekly" ||
+    raw.cadence === "monthly"
+      ? raw.cadence
+      : "weekly";
+  return {
+    id: String(raw.id),
+    title: raw.title || `Savings Goal #${raw.id}`,
+    description: raw.description,
+    cadence,
+    deadline: raw.deadline,
+    saved: Number(raw.saved) || 0,
+    target: Number(raw.target) || 0,
+    status: raw.status,
+    createdAt: raw.createdAt || new Date().toISOString(),
+  };
+}
 
 function dateToLedgerSeconds(isoDate: string): bigint {
   return BigInt(Math.floor(new Date(isoDate).getTime() / 1000));
@@ -169,67 +164,86 @@ function ledgerSecondsToDate(seconds: number | bigint): string {
   return new Date(Number(seconds) * 1000).toISOString().slice(0, 10);
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [network, setNetworkState] = useState<"TESTNET" | "PUBLIC">("TESTNET");
+  const [network, setNetworkState] = useState<"TESTNET" | "PUBLIC">(configuredNetwork());
   const [isConnecting, setIsConnecting] = useState(false);
-  const [goals, setGoals] = useState<SavingsGoal[]>(SEED_GOALS);
-  const [activity, setActivity] = useState<ActivityEntry[]>(SEED_ACTIVITY);
+  const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [profile, setProfile] = useState<WalletProfile>({ displayName: "", animations: true });
   const [hydrated, setHydrated] = useState(false);
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [usdcBalanceLoading, setUsdcBalanceLoading] = useState(false);
 
-  const isDemo = walletAddress === DEMO_ADDRESS;
+  const isOnChain = !!getFundKeepClient();
 
-  // Kept in sync with the latest goals/wallet so checkDeadlines can stay a
-  // stable callback (no goals/walletAddress in its deps) — otherwise its
-  // identity would change every time it updates a goal, retriggering any
-  // effect that depends on it and looping forever.
   const goalsRef = useRef(goals);
   useEffect(() => {
     goalsRef.current = goals;
   }, [goals]);
+
+  const activityRef = useRef(activity);
+  useEffect(() => {
+    activityRef.current = activity;
+  }, [activity]);
 
   const walletAddressRef = useRef(walletAddress);
   useEffect(() => {
     walletAddressRef.current = walletAddress;
   }, [walletAddress]);
 
-  // Hydrate from localStorage on mount. This intentionally renders seed data
-  // first (matching the server-rendered output) and swaps in the real
-  // localStorage values only after mount, to avoid a hydration mismatch —
-  // the setState-in-effect lint rule doesn't have an exception for this.
   useEffect(() => {
     const storedWallet = loadFromStorage<string | null>(STORAGE_KEY_WALLET, null);
-    const storedNetwork = loadFromStorage<"TESTNET" | "PUBLIC">(STORAGE_KEY_NETWORK, "TESTNET");
-    const storedGoals = loadFromStorage<SavingsGoal[]>(STORAGE_KEY_GOALS, SEED_GOALS);
-    const storedActivity = loadFromStorage<ActivityEntry[]>(STORAGE_KEY_ACTIVITY, SEED_ACTIVITY);
+    const validWallet = storedWallet && isStellarPublicKey(storedWallet) ? storedWallet : null;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setWalletAddress(storedWallet);
-    setNetworkState(storedNetwork);
-    setGoals(storedGoals);
-    setActivity(storedActivity);
+    /* Hydrate from localStorage after mount to avoid SSR mismatch. */
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setWalletAddress(validWallet);
+    setNetworkState(configuredNetwork());
+    if (validWallet) {
+      const bundle = loadBundle(validWallet);
+      setGoals(bundle.goals);
+      setActivity(bundle.activity);
+      setProfile(bundle.profile);
+    } else {
+      setGoals([]);
+      setActivity([]);
+      setProfile({ displayName: "", animations: true });
+    }
     setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
-  // Persist goals
   useEffect(() => {
-    if (hydrated) saveToStorage(STORAGE_KEY_GOALS, goals);
-  }, [goals, hydrated]);
+    document.documentElement.classList.toggle("fk-reduce-motion", profile.animations === false);
+  }, [profile.animations]);
 
-  // Persist activity
   useEffect(() => {
-    if (hydrated) saveToStorage(STORAGE_KEY_ACTIVITY, activity);
-  }, [activity, hydrated]);
+    if (!hydrated || !walletAddress) return;
+    saveToStorage(bundleKey(walletAddress), { goals, activity, profile });
+  }, [goals, activity, profile, walletAddress, hydrated]);
 
-  // For a real (non-demo) connected wallet, pull authoritative goal/activity
-  // history from the indexer once it's known. Falls back to whatever is
-  // already in local state if the indexer isn't configured or unreachable.
+  const refreshUsdcBalance = useCallback(async () => {
+    const address = walletAddressRef.current;
+    if (!address) {
+      setUsdcBalance(null);
+      return;
+    }
+    setUsdcBalanceLoading(true);
+    const balance = await fetchUsdcBalance(address);
+    setUsdcBalance(balance);
+    setUsdcBalanceLoading(false);
+  }, []);
+
   useEffect(() => {
-    if (!hydrated || !walletAddress || isDemo) return;
+    if (!hydrated || !walletAddress) return;
+    void refreshUsdcBalance();
+  }, [hydrated, walletAddress, refreshUsdcBalance]);
+
+  useEffect(() => {
+    if (!hydrated || !walletAddress) return;
 
     let cancelled = false;
 
@@ -249,7 +263,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             return {
               id,
               title: existing?.title ?? `Savings Goal #${ig.goalId}`,
-              category: existing?.category ?? "other",
+              description: existing?.description,
+              cadence: existing?.cadence ?? "weekly",
               deadline: existing?.deadline ?? ledgerSecondsToDate(ig.deadline),
               saved: fromStroops(BigInt(ig.currentAmount)),
               target: fromStroops(BigInt(ig.targetAmount)),
@@ -281,37 +296,37 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, walletAddress, isDemo]);
-
-  // ── Wallet actions ────────────────────────────────────────────────────────
+  }, [hydrated, walletAddress]);
 
   const connect = useCallback(async () => {
     setIsConnecting(true);
     const result = await connectFreighter();
 
-    if (result.success && result.address) {
-      setWalletAddress(result.address);
-      saveToStorage(STORAGE_KEY_WALLET, result.address);
-      setIsConnecting(false);
-      return { success: true };
-    }
-
-    // Fallback demo mode when Freighter isn't installed
-    const isInstalled = await checkFreighterInstalled();
-    if (!isInstalled) {
-      await new Promise((r) => setTimeout(r, 700));
-      setWalletAddress(DEMO_ADDRESS);
-      saveToStorage(STORAGE_KEY_WALLET, DEMO_ADDRESS);
+    if (result.success && result.address && isStellarPublicKey(result.address)) {
+      const address = result.address;
+      setWalletAddress(address);
+      saveToStorage(STORAGE_KEY_WALLET, address);
+      const bundle = loadBundle(address);
+      setGoals(bundle.goals);
+      setActivity(bundle.activity);
+      setProfile(bundle.profile);
       setIsConnecting(false);
       return { success: true };
     }
 
     setIsConnecting(false);
-    return { success: false, error: result.error };
+    return {
+      success: false,
+      error: result.error || "Freighter did not return a valid Stellar public key.",
+    };
   }, []);
 
   const disconnect = useCallback(() => {
     setWalletAddress(null);
+    setGoals([]);
+    setActivity([]);
+    setProfile({ displayName: "", animations: true });
+    setUsdcBalance(null);
     localStorage.removeItem(STORAGE_KEY_WALLET);
   }, []);
 
@@ -320,9 +335,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     saveToStorage(STORAGE_KEY_NETWORK, n);
   }, []);
 
-  // ── Goal actions ──────────────────────────────────────────────────────────
+  const setDisplayName = useCallback((name: string) => {
+    setProfile((prev) => ({ ...prev, displayName: name.trim() }));
+  }, []);
+
+  const setAnimations = useCallback((on: boolean) => {
+    setProfile((prev) => ({ ...prev, animations: on }));
+  }, []);
 
   const addActivity = useCallback((entry: Omit<ActivityEntry, "id">) => {
+    const duplicate = activityRef.current.some(
+      (a) =>
+        a.type === entry.type &&
+        a.goalId === entry.goalId &&
+        Math.abs(new Date(a.timestamp).getTime() - new Date(entry.timestamp).getTime()) < 15_000
+    );
+    if (duplicate) return;
     const newEntry: ActivityEntry = { ...entry, id: `act-${Date.now()}` };
     setActivity((prev) => [newEntry, ...prev]);
   }, []);
@@ -330,16 +358,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const createGoal = useCallback(
     async (params: {
       title: string;
-      category: SavingsGoal["category"];
+      description?: string;
+      cadence: SaveCadence;
       target: number;
       deadline: string;
     }): Promise<SavingsGoal> => {
+      const title = params.title.trim();
+      if (!title) throw new Error("Goal title is required.");
+      if (!Number.isFinite(params.target) || params.target <= 0) {
+        throw new Error("Target amount must be greater than 0.");
+      }
       const deadline =
-        params.deadline || new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        params.deadline ||
+        new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       let id: string;
-
-      const client = walletAddress && !isDemo ? getFundKeepClient() : null;
+      const client = walletAddress ? getFundKeepClient() : null;
 
       if (client && walletAddress) {
         const usdc = getUsdcContractId();
@@ -363,8 +397,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       const newGoal: SavingsGoal = {
         id,
-        title: params.title,
-        category: params.category,
+        title,
+        description: params.description?.trim() || undefined,
+        cadence: params.cadence,
         deadline,
         saved: 0,
         target: params.target,
@@ -382,15 +417,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       return newGoal;
     },
-    [walletAddress, isDemo, addActivity]
+    [walletAddress, addActivity]
   );
 
   const depositToGoal = useCallback(
     async (goalId: string, amount: number) => {
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Deposit amount must be greater than 0.");
+      }
       const goal = goals.find((g) => g.id === goalId);
-      if (!goal) return;
+      if (!goal) throw new Error("Goal not found.");
+      if (goal.status !== "LOCKED") throw new Error("This goal is not accepting deposits.");
 
-      const client = walletAddress && !isDemo ? getFundKeepClient() : null;
+      const client = walletAddress ? getFundKeepClient() : null;
 
       let newSaved = Math.min(goal.saved + amount, goal.target);
       let unlocked = newSaved >= goal.target;
@@ -424,7 +463,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         timestamp: new Date().toISOString(),
       });
 
-      if (unlocked && goal.status !== "UNLOCKED") {
+      if (unlocked) {
         addActivity({
           type: "unlock",
           goalId,
@@ -433,16 +472,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           timestamp: new Date().toISOString(),
         });
       }
+
+      void refreshUsdcBalance();
     },
-    [goals, walletAddress, isDemo, addActivity]
+    [goals, walletAddress, addActivity, refreshUsdcBalance]
   );
 
   const withdrawGoal = useCallback(
     async (goalId: string) => {
       const goal = goals.find((g) => g.id === goalId);
-      if (!goal || goal.status !== "UNLOCKED") return;
+      if (!goal) throw new Error("Goal not found.");
+      if (goal.status !== "UNLOCKED") throw new Error("This goal is still locked.");
 
-      const client = walletAddress && !isDemo ? getFundKeepClient() : null;
+      const client = walletAddress ? getFundKeepClient() : null;
 
       if (client && walletAddress) {
         const tx = await client.buildWithdrawTx({
@@ -463,42 +505,41 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         amount: goal.saved,
         timestamp: new Date().toISOString(),
       });
+
+      void refreshUsdcBalance();
     },
-    [goals, walletAddress, isDemo, addActivity]
+    [goals, walletAddress, addActivity, refreshUsdcBalance]
   );
 
   const checkDeadlines = useCallback(async () => {
     const currentWalletAddress = walletAddressRef.current;
-    const currentIsDemo = currentWalletAddress === DEMO_ADDRESS;
-    const client = currentWalletAddress && !currentIsDemo ? getFundKeepClient() : null;
+    const client = currentWalletAddress ? getFundKeepClient() : null;
     const now = new Date();
-
-    if (!client || !currentWalletAddress) {
-      const newlyUnlocked = goalsRef.current.filter(
-        (g) => g.status === "LOCKED" && new Date(g.deadline) <= now
-      );
-
-      setGoals((prev) =>
-        prev.map((g) =>
-          newlyUnlocked.some((u) => u.id === g.id) ? { ...g, status: "UNLOCKED" } : g
-        )
-      );
-
-      for (const g of newlyUnlocked) {
-        addActivity({
-          type: "unlock",
-          goalId: g.id,
-          goalTitle: g.title,
-          amount: g.saved,
-          timestamp: new Date().toISOString(),
-        });
-      }
-      return;
-    }
 
     const overdue = goalsRef.current.filter(
       (g) => g.status === "LOCKED" && new Date(g.deadline) <= now
     );
+
+    const logUnlock = (g: SavingsGoal, amount: number) => {
+      addActivity({
+        type: "unlock",
+        goalId: g.id,
+        goalTitle: g.title,
+        amount,
+        timestamp: new Date().toISOString(),
+      });
+    };
+
+    if (!client || !currentWalletAddress) {
+      if (overdue.length === 0) return;
+      setGoals((prev) =>
+        prev.map((g) =>
+          overdue.some((u) => u.id === g.id) ? { ...g, status: "UNLOCKED" } : g
+        )
+      );
+      for (const g of overdue) logUnlock(g, g.saved);
+      return;
+    }
 
     for (const g of overdue) {
       try {
@@ -513,22 +554,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setGoals((prev) => prev.map((p) => (p.id === g.id ? { ...p, status } : p)));
 
         if (status === "UNLOCKED") {
-          addActivity({
-            type: "unlock",
-            goalId: g.id,
-            goalTitle: g.title,
-            amount: fromStroops(onChain.currentAmount),
-            timestamp: new Date().toISOString(),
-          });
+          logUnlock(g, fromStroops(onChain.currentAmount));
         }
       } catch {
-        // Best-effort background check — a single failure shouldn't block
-        // the rest of the goals or surface an error to the user.
+        // Best-effort background check
       }
     }
   }, [addActivity]);
-
-  // ── Derived stats ─────────────────────────────────────────────────────────
 
   const totalSaved = goals.reduce((sum, g) => sum + g.saved, 0);
   const totalTarget = goals.reduce((sum, g) => sum + g.target, 0);
@@ -556,7 +588,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         walletAddress,
         network,
         isConnecting,
-        isDemo,
+        hydrated,
+        isOnChain,
         connect,
         disconnect,
         setNetwork,
@@ -566,6 +599,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         withdrawGoal,
         checkDeadlines,
         activity,
+        profile,
+        setDisplayName,
+        setAnimations,
+        usdcBalance,
+        usdcBalanceLoading,
+        refreshUsdcBalance,
         stats,
       }}
     >

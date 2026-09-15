@@ -5,13 +5,6 @@ import {
   getAddress,
 } from "@stellar/freighter-api";
 
-export interface FreighterWalletState {
-  isInstalled: boolean;
-  address: string | null;
-  network: string | null;
-  error: string | null;
-}
-
 /**
  * Checks if the Freighter browser extension is installed.
  */
@@ -25,8 +18,17 @@ export async function checkFreighterInstalled(): Promise<boolean> {
   }
 }
 
+function permissionDenied(result: unknown): string | null {
+  if (!result || typeof result !== "object") return null;
+  const rec = result as { isAllowed?: boolean; error?: string };
+  if (rec.error) return String(rec.error);
+  if (rec.isAllowed === false) return "Freighter access was denied.";
+  return null;
+}
+
 /**
- * Connect to Freighter wallet and retrieve user's Stellar public key.
+ * Connect to Freighter wallet and retrieve the user's Stellar public key.
+ * Does not fall back to a demo address — callers must handle a failed connect.
  */
 export async function connectFreighter(): Promise<{
   success: boolean;
@@ -40,22 +42,24 @@ export async function connectFreighter(): Promise<{
       return {
         success: false,
         error:
-          "Freighter wallet extension is not installed. Please install Freighter from freighter.app to connect your Stellar account.",
+          "Freighter wallet extension is not installed. Install Freighter from freighter.app, then try again.",
       };
     }
 
-    // Request access permissions from Freighter
     const allowed = await isAllowed();
     if (!allowed.isAllowed) {
-      await setAllowed();
+      const permission = await setAllowed();
+      const denied = permissionDenied(permission);
+      if (denied) {
+        return { success: false, error: denied };
+      }
     }
 
-    // Fetch user public key / address from Freighter
     const addressResult = await getAddress();
     if (addressResult.error) {
       return {
         success: false,
-        error: addressResult.error || "Failed to retrieve address from Freighter.",
+        error: String(addressResult.error) || "Failed to retrieve address from Freighter.",
       };
     }
 
