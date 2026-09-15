@@ -197,13 +197,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     walletAddressRef.current = walletAddress;
   }, [walletAddress]);
 
-  // Hydrate from localStorage on mount
+  // Hydrate from localStorage on mount. This intentionally renders seed data
+  // first (matching the server-rendered output) and swaps in the real
+  // localStorage values only after mount, to avoid a hydration mismatch —
+  // the setState-in-effect lint rule doesn't have an exception for this.
   useEffect(() => {
     const storedWallet = loadFromStorage<string | null>(STORAGE_KEY_WALLET, null);
     const storedNetwork = loadFromStorage<"TESTNET" | "PUBLIC">(STORAGE_KEY_NETWORK, "TESTNET");
     const storedGoals = loadFromStorage<SavingsGoal[]>(STORAGE_KEY_GOALS, SEED_GOALS);
     const storedActivity = loadFromStorage<ActivityEntry[]>(STORAGE_KEY_ACTIVITY, SEED_ACTIVITY);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setWalletAddress(storedWallet);
     setNetworkState(storedNetwork);
     setGoals(storedGoals);
@@ -470,12 +474,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const now = new Date();
 
     if (!client || !currentWalletAddress) {
-      setGoals((prev) =>
-        prev.map((g) => {
-          if (g.status !== "LOCKED") return g;
-          return new Date(g.deadline) <= now ? { ...g, status: "UNLOCKED" } : g;
-        })
+      const newlyUnlocked = goalsRef.current.filter(
+        (g) => g.status === "LOCKED" && new Date(g.deadline) <= now
       );
+
+      setGoals((prev) =>
+        prev.map((g) =>
+          newlyUnlocked.some((u) => u.id === g.id) ? { ...g, status: "UNLOCKED" } : g
+        )
+      );
+
+      for (const g of newlyUnlocked) {
+        addActivity({
+          type: "unlock",
+          goalId: g.id,
+          goalTitle: g.title,
+          amount: g.saved,
+          timestamp: new Date().toISOString(),
+        });
+      }
       return;
     }
 
@@ -494,12 +511,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         const onChain = await client.getGoal(Number(g.id));
         const status = deriveGoalStatus(onChain);
         setGoals((prev) => prev.map((p) => (p.id === g.id ? { ...p, status } : p)));
+
+        if (status === "UNLOCKED") {
+          addActivity({
+            type: "unlock",
+            goalId: g.id,
+            goalTitle: g.title,
+            amount: fromStroops(onChain.currentAmount),
+            timestamp: new Date().toISOString(),
+          });
+        }
       } catch {
         // Best-effort background check — a single failure shouldn't block
         // the rest of the goals or surface an error to the user.
       }
     }
-  }, []);
+  }, [addActivity]);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
 

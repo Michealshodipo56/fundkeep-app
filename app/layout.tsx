@@ -9,9 +9,8 @@ export const metadata: Metadata = {
   keywords: ["savings", "USDC", "Stellar", "Soroban", "blockchain", "DeFi", "goal"],
   icons: {
     icon: [
-      { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", type: "image/x-icon" },
     ],
     shortcut: "/favicon.svg",
     apple: "/favicon.svg",

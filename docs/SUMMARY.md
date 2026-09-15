@@ -4,6 +4,7 @@
   * [What is FundKeep](introduction/what-is-fundkeep.md)
   * [The Problem](introduction/the-problem.md)
   * [How It Works](introduction/how-it-works.md)
+  * [System Architecture](introduction/architecture.md)
 
 * [Core Concepts](concepts/savings-goals.md)
   * [Savings Goals](concepts/savings-goals.md)
@@ -27,6 +28,8 @@
   * [Local Setup](developer/local-setup.md)
   * [Environment Variables](developer/environment-variables.md)
   * [Contract Reference](developer/contract-reference.md)
+  * [SDK Reference](developer/sdk-reference.md)
+  * [Indexer API Reference](developer/indexer-api-reference.md)
   * [Testing](developer/testing.md)
 
 * [Contributing](contributing/how-to-contribute.md)

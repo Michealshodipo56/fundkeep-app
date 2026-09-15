@@ -5,11 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
 const navLinks = [
-  { label: "Features", href: "#features" },
+  { label: "Features", href: "#hero" },
   { label: "How It Works", href: "#how-it-works" },
   { label: "Security", href: "#security" },
-  { label: "Docs", href: "#docs" },
-  { label: "FAQ", href: "#faq" },
+  { label: "Ecosystem", href: "#ecosystem" },
 ];
 
 export default function Navbar() {
@@ -35,19 +34,19 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
-        <a href="/" className="flex items-center gap-2 shrink-0" aria-label="FundKeep home">
-          <div className="w-8 h-8 rounded-lg bg-[#111] border border-[var(--border-red)] flex items-center justify-center glow-red-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                fill="#e0342a"
-              />
-            </svg>
-          </div>
+        <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="FundKeep home">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.svg"
+            alt="FundKeep logo"
+            width={32}
+            height={32}
+            className="w-8 h-8 object-contain"
+          />
           <span className="text-lg font-bold tracking-tight">
             Fund<span className="text-red">Keep</span>
           </span>
-        </a>
+        </Link>
 
         {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-6" aria-label="Main navigation">

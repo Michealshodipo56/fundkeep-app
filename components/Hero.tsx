@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import Link from "next/link";
 import GoalCard from "./GoalCard";
 
 const trustBadges = [
@@ -106,17 +107,17 @@ export default function Hero() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="flex flex-wrap items-center gap-3"
             >
-              <a
-                href="#"
+              <Link
+                href="/auth"
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl bg-red text-white font-semibold text-sm transition-all duration-150 hover:opacity-90 hover:shadow-[0_0_30px_rgba(224,52,42,0.55)] glow-red min-h-[44px]"
               >
                 Create Your Goal
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </a>
-              <a
-                href="#"
+              </Link>
+              <Link
+                href="/dashboard"
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-white/15 bg-white/5 text-white font-semibold text-sm hover:bg-white/10 hover:border-white/25 transition-all duration-150 min-h-[44px]"
               >
                 View Demo
@@ -124,7 +125,7 @@ export default function Hero() {
                   <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
                   <path d="M10 8.5l6 3.5-6 3.5V8.5z" fill="currentColor" />
                 </svg>
-              </a>
+              </Link>
             </motion.div>
 
             {/* Trust badges */}

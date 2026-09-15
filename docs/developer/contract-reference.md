@@ -2,6 +2,8 @@
 
 This page documents the FundKeep Soroban contract interface for developers building tooling, integrations, or keeper scripts against it directly.
 
+**If you're building a TypeScript/JavaScript integration, use [`@fundkeep/sdk`](https://github.com/Michealshodipo56/fundkeep-sdk) instead of hand-rolling the calls below** — it handles transaction building, simulation, signing, submission, and error decoding. See the [SDK Reference](sdk-reference.md). The raw patterns here are for the Rust/CLI side, or for understanding what the SDK does under the hood.
+
 ## Invoking Functions via Soroban CLI
 
 ```bash
@@ -51,37 +53,31 @@ soroban contract invoke \
   --goal_id 0
 ```
 
-## Invoking via `stellar-sdk` (JavaScript)
+## Invoking via `@fundkeep/sdk` (recommended)
 
 ```typescript
-import { Contract, Networks, TransactionBuilder, BASE_FEE } from "@stellar/stellar-sdk";
-import { SorobanRpc } from "@stellar/stellar-sdk";
+import { FundKeepClient, toStroops } from "@fundkeep/sdk";
+import { signTransaction } from "@stellar/freighter-api";
+import { Networks } from "@stellar/stellar-sdk";
 
-const server = new SorobanRpc.Server("https://soroban-testnet.stellar.org");
-const contract = new Contract(process.env.NEXT_PUBLIC_CONTRACT_ID!);
-
-// Build a deposit transaction
-const account = await server.getAccount(ownerPublicKey);
-const tx = new TransactionBuilder(account, {
-  fee: BASE_FEE,
+const client = new FundKeepClient({
+  contractId: process.env.NEXT_PUBLIC_CONTRACT_ID!,
+  rpcUrl: "https://soroban-testnet.stellar.org",
   networkPassphrase: Networks.TESTNET,
-})
-  .addOperation(
-    contract.call(
-      "deposit",
-      // goal_id as u32
-      xdr.ScVal.scvU32(goalId),
-      // amount as i128
-      nativeToScVal(BigInt(amount), { type: "i128" })
-    )
-  )
-  .setTimeout(30)
-  .build();
+});
 
-// Simulate, then sign and send
-const simResult = await server.simulateTransaction(tx);
-// ... sign with Freighter and submit
+const tx = await client.buildDepositTx({
+  caller: ownerPublicKey,
+  goalId: 0,
+  amount: toStroops("25.5"),
+});
+
+const { hash } = await client.signAndSend(tx, signTransaction, {
+  address: ownerPublicKey,
+});
 ```
+
+Full API in the [SDK Reference](sdk-reference.md). If you need the raw `@stellar/stellar-sdk` primitives the SDK builds on (`Contract`, `TransactionBuilder`, `rpc.Server`), read `fundkeep-sdk/src/client.ts` directly — it's a short, well-commented file.
 
 ## Error Codes
 

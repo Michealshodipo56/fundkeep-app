@@ -71,11 +71,11 @@ export async function connectFreighter(): Promise<{
       success: true,
       address,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("Freighter wallet connection error:", err);
     return {
       success: false,
-      error: err.message || "Failed to connect to Freighter wallet.",
+      error: err instanceof Error ? err.message : "Failed to connect to Freighter wallet.",
     };
   }
 }

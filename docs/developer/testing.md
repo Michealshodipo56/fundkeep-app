@@ -30,26 +30,25 @@ cargo test
 
 ### Test Structure
 
-Tests live in `src/test.rs`. Each test creates a fresh contract environment, registers a mock USDC token contract, and runs through a full or partial goal lifecycle. The mock token contract allows the test to verify token balances without hitting an actual network.
+Tests live in `src/test.rs`. Each test creates a fresh contract environment, registers a real Stellar Asset Contract as the test token via `soroban-sdk`'s testutils, and runs through a full or partial goal lifecycle — no hand-mocked token, so balance assertions exercise the real transfer path.
 
-## Frontend Tests
+## SDK Tests
 
-Run frontend tests with:
+[`fundkeep-sdk`](https://github.com/Michealshodipo56/fundkeep-sdk) has its own vitest suite (`npm test`), covering transaction-building argument encoding (mocked RPC, no network), the USDC stroops conversion helpers, and contract-error parsing.
 
-```bash
-npm test
-```
+## Indexer Tests
 
-The frontend test suite covers:
-- `WalletProvider` state transitions (create, deposit, withdraw, checkDeadlines)
-- Derived stats calculations (`totalSaved`, `overallPercent`, etc.)
-- Local storage persistence and hydration
+[`fundkeep-indexer`](https://github.com/Michealshodipo56/fundkeep-indexer) has its own vitest suite (`npm test`), covering event decoding, the SQLite data layer, and the poller's event-to-database application logic against a mocked RPC.
+
+## Frontend
+
+This repo has no automated test suite yet — `npm run lint` and `npx tsc --noEmit` are what CI runs. The wallet/chain-interaction logic itself is covered by the SDK's tests (`FundKeepClient`, which `lib/wallet-context.tsx` wraps) rather than duplicated here.
 
 ## Manual End-to-End Testing
 
 For a full integration test against the live Soroban Testnet:
 
-1. Fund a testnet account via [Friendbot](https://friendbot.stellar.org).
-2. Obtain testnet USDC by minting from the testnet USDC faucet or using Stellar Laboratory.
-3. Deploy your local contract build using `soroban contract deploy` (see [Local Setup](local-setup.md)).
-4. Use Stellar Laboratory or the Soroban CLI to call each function in sequence and verify the returned state matches expectations.
+1. Deploy the contract: `fundkeep-contract/scripts/deploy.sh` (generates and funds a testnet identity, deploys, and prints a test USDC contract ID too).
+2. Point `fundkeep-app/.env.local` and `fundkeep-indexer/.env` at the printed contract ID.
+3. Fund your Freighter testnet account with XLM via [Friendbot](https://friendbot.stellar.org) and get some of the test USDC from whoever holds the issuer key for the token printed in step 1.
+4. Run through create → deposit → withdraw in the running app, and confirm `fundkeep-indexer`'s `/api/activity/:owner` reflects each step.

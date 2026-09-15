@@ -34,10 +34,12 @@ function DepositFormContent() {
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
 
-  // Set default goal selection
+  // Set default goal selection once the goal list (hydrated async from
+  // context) and the URL's goalId are both available.
   useEffect(() => {
     if (goals.length > 0) {
       if (initialGoalId && goals.some((g) => g.id === initialGoalId)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedGoalId(initialGoalId);
       } else if (!selectedGoalId) {
         setSelectedGoalId(goals[0].id);
@@ -46,7 +48,6 @@ function DepositFormContent() {
   }, [goals, initialGoalId, selectedGoalId]);
 
   const selectedGoal = goals.find((g) => g.id === selectedGoalId) || goals[0];
-  const availableBalance = 2345.67;
 
   const currentPercent = selectedGoal
     ? Math.min(100, Math.round((selectedGoal.saved / selectedGoal.target) * 100))
@@ -96,14 +97,14 @@ function DepositFormContent() {
       {/* MOBILE HEADER */}
       <div className="md:hidden flex items-center justify-between px-4 h-16 bg-[#111] border-b border-white/10 sticky top-0 z-40">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#181818] border border-red/40 flex items-center justify-center glow-red-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                fill="#e0342a"
-              />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.svg"
+            alt="FundKeep logo"
+            width={32}
+            height={32}
+            className="w-8 h-8 object-contain"
+          />
           <span className="text-lg font-bold">
             Fund<span className="text-red">Keep</span>
           </span>
@@ -131,14 +132,14 @@ function DepositFormContent() {
       >
         <div className="flex flex-col gap-8">
           <Link href="/" className="flex items-center gap-2.5 px-2">
-            <div className="w-9 h-9 rounded-xl bg-[#181818] border border-red/40 flex items-center justify-center glow-red-sm">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2C9.24 2 7 4.24 7 7v1H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V7c0-2.76-2.24-5-5-5zm0 2a3 3 0 0 1 3 3v1H9V7a3 3 0 0 1 3-3zm0 9a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"
-                  fill="#e0342a"
-                />
-              </svg>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/icon.svg"
+              alt="FundKeep logo"
+              width={32}
+              height={32}
+              className="w-8 h-8 object-contain"
+            />
             <span className="text-xl font-bold tracking-tight">
               Fund<span className="text-red">Keep</span>
             </span>
