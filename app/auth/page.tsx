@@ -6,10 +6,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { checkFreighterInstalled } from "@/lib/freighter";
 import { useWallet } from "@/lib/wallet-context";
+import { configuredNetwork } from "@/lib/utils";
 
 export default function AuthPage() {
   const router = useRouter();
-  const { walletAddress, network, setNetwork, connect, isConnecting } = useWallet();
+  const { walletAddress, connect, isConnecting, hydrated } = useWallet();
+  const network = configuredNetwork();
 
   const [freighterInstalled, setFreighterInstalled] = useState<boolean | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
@@ -23,19 +25,20 @@ export default function AuthPage() {
 
   // If already connected, redirect to dashboard
   useEffect(() => {
-    if (walletAddress) {
+    if (hydrated && walletAddress) {
       router.push("/dashboard");
     }
-  }, [walletAddress, router]);
+  }, [hydrated, walletAddress, router]);
 
   const handleConnectFreighter = async () => {
     setFeedback(null);
 
-    if (!freighterInstalled) {
+    if (freighterInstalled === false) {
       setFeedback({
-        type: "info",
-        text: "Freighter extension not detected. Connecting in demonstration mode…",
+        type: "error",
+        text: "Freighter is not installed. Install it from freighter.app, set it to Testnet, then connect again.",
       });
+      return;
     }
 
     const result = await connect();
@@ -43,15 +46,16 @@ export default function AuthPage() {
     if (result.success) {
       setFeedback({
         type: "success",
-        text: `Connected to Stellar ${network}! Redirecting…`,
+        text: `Connected to Stellar ${network}. Redirecting…`,
       });
       setTimeout(() => router.push("/dashboard"), 800);
       return;
     }
 
-    if (result.error) {
-      setFeedback({ type: "error", text: result.error });
-    }
+    setFeedback({
+      type: "error",
+      text: result.error || "Could not connect to Freighter.",
+    });
   };
 
   return (
@@ -119,24 +123,9 @@ export default function AuthPage() {
               <span className="font-semibold text-white/90">Stellar Network</span>
             </div>
             <div className="flex items-center p-0.5 rounded-lg bg-black/50 border border-white/5 text-[10px] font-bold">
-              <button
-                type="button"
-                onClick={() => setNetwork("TESTNET")}
-                className={`px-2 py-0.5 rounded ${
-                  network === "TESTNET" ? "bg-red text-white" : "text-white/40 hover:text-white"
-                }`}
-              >
-                TESTNET
-              </button>
-              <button
-                type="button"
-                onClick={() => setNetwork("PUBLIC")}
-                className={`px-2 py-0.5 rounded ${
-                  network === "PUBLIC" ? "bg-red text-white" : "text-white/40 hover:text-white"
-                }`}
-              >
-                MAINNET
-              </button>
+              <span className="px-2 py-0.5 rounded bg-red text-white">
+                {network === "PUBLIC" ? "MAINNET" : "TESTNET"}
+              </span>
             </div>
           </div>
 

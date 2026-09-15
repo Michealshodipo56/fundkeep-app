@@ -117,10 +117,10 @@ export default function Hero() {
                 </svg>
               </Link>
               <Link
-                href="/dashboard"
+                href="/auth"
                 className="inline-flex items-center gap-2 px-6 py-3.5 rounded-xl border border-white/15 bg-white/5 text-white font-semibold text-sm hover:bg-white/10 hover:border-white/25 transition-all duration-150 min-h-[44px]"
               >
-                View Demo
+                Launch App
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
                   <path d="M10 8.5l6 3.5-6 3.5V8.5z" fill="currentColor" />
