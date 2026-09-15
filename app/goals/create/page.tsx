@@ -50,15 +50,14 @@ export default function CreateGoalPage() {
     setCreatedReceipt(null);
 
     try {
-      const { receipt } = await createGoal({
+      const { goal } = await createGoal({
         title: goalName,
         description: goalDescription,
         cadence,
         target: parseFloat(targetAmount),
         deadline: effectiveDeadline,
       });
-      setCreatedReceipt(receipt);
-      setTimeout(() => router.push("/goals"), receipt.hash ? 2800 : 1200);
+      router.push(`/goals/${goal.id}`);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
     } finally {

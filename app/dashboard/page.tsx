@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWallet, type ActivityEntry, type TxReceipt } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
 import { CadencePicker, SavePlanHint } from "@/components/CadencePicker";
@@ -100,6 +101,7 @@ function CadenceBadge({ cadence }: { cadence: SaveCadence }) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { walletAddress, createGoal, checkDeadlines, activity, stats, profile, goals } = useWallet();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -131,7 +133,7 @@ export default function DashboardPage() {
       setCreatedReceipt(null);
 
       try {
-        const { receipt } = await createGoal({
+        const { goal } = await createGoal({
           title: newGoalTitle,
           cadence: newGoalCadence,
           target: parseFloat(newGoalTarget),
@@ -142,14 +144,14 @@ export default function DashboardPage() {
         setNewGoalTarget("");
         setNewGoalDeadline("");
         setNewGoalCadence("weekly");
-        setCreatedReceipt(receipt);
+        router.push(`/goals/${goal.id}`);
       } catch (err) {
         setCreateError(err instanceof Error ? err.message : "Failed to create goal.");
       } finally {
         setCreating(false);
       }
     },
-    [newGoalTitle, newGoalTarget, newGoalDeadline, newGoalCadence, createGoal]
+    [newGoalTitle, newGoalTarget, newGoalDeadline, newGoalCadence, createGoal, router]
   );
 
   const displayName =

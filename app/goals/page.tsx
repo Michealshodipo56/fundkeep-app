@@ -1,37 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useWallet, type TxReceipt } from "@/lib/wallet-context";
+import { useWallet } from "@/lib/wallet-context";
 import { AppShell } from "@/components/AppShell";
-import { TxReceiptCard } from "@/components/TxReceiptCard";
 import { CADENCE_LABELS, formatDeadline, formatUsdc, suggestedSaveAmount } from "@/lib/utils";
 
 export default function GoalsPage() {
-  const { goals, withdrawGoal } = useWallet();
+  const { goals } = useWallet();
   const [activeFilter, setActiveFilter] = useState<"all" | "locked" | "unlocked">("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
-  const [withdrawError, setWithdrawError] = useState<string | null>(null);
-  const [withdrawReceipt, setWithdrawReceipt] = useState<TxReceipt | null>(null);
-
-  const handleWithdraw = useCallback(
-    async (goalId: string) => {
-      setWithdrawingId(goalId);
-      setWithdrawError(null);
-      setWithdrawReceipt(null);
-      try {
-        const receipt = await withdrawGoal(goalId);
-        setWithdrawReceipt(receipt);
-      } catch (err) {
-        setWithdrawError(err instanceof Error ? err.message : "Failed to withdraw.");
-      } finally {
-        setWithdrawingId(null);
-      }
-    },
-    [withdrawGoal]
-  );
 
   const filteredGoals = goals.filter((goal) => {
     const matchesFilter =
@@ -83,11 +62,6 @@ export default function GoalsPage() {
             className="flex-1 px-4 py-2 rounded-xl bg-black/50 border border-white/10 text-xs text-white placeholder-white/30 focus:outline-none focus:border-red"
           />
         </div>
-
-        {withdrawError && (
-          <p className="text-xs text-red font-semibold">{withdrawError}</p>
-        )}
-        {withdrawReceipt && <TxReceiptCard receipt={withdrawReceipt} />}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredGoals.length === 0 && (
@@ -147,24 +121,9 @@ export default function GoalsPage() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-auto">
-                  {goal.status === "LOCKED" && (
-                    <Link
-                      href={`/deposit?goalId=${goal.id}`}
-                      className="flex-1 py-2 px-3 rounded-xl bg-red/10 border border-red/30 text-red text-xs font-bold text-center"
-                    >
-                      Deposit USDC
-                    </Link>
-                  )}
-                  {goal.status === "UNLOCKED" && (
-                    <button
-                      type="button"
-                      onClick={() => handleWithdraw(goal.id)}
-                      disabled={withdrawingId === goal.id}
-                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold disabled:opacity-60"
-                    >
-                      {withdrawingId === goal.id ? "Waiting for confirmation…" : "Withdraw Funds"}
-                    </button>
-                  )}
+                  <Link href={`/goals/${goal.id}`} className="flex-1 py-2 px-3 rounded-xl bg-red/10 border border-red/30 text-red text-xs font-bold text-center">
+                    {goal.status === "LOCKED" ? "View & Fund Goal" : "View Goal"}
+                  </Link>
                 </div>
               </motion.div>
             );
